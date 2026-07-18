@@ -1,0 +1,211 @@
+# 故障知识库（Agent 4 运维建议哨兵使用）
+# 字段结构遵循技术框架 §3.3「故障知识库」表
+# 检索维度：fault_type(精确) + symptom_pattern(关键词) + description(语义相似度)
+#
+# 案例覆盖矩阵：
+#   轴承过热  ×3（润滑不足 / 轴承磨损 / 冷却失效）
+#   烟气超标  ×3（燃烧异常 / 脱硫剂不足 / 给料不均）
+#   炉排卡滞  ×2（异物卡阻 / 机械磨损）
+#   锅炉泄漏  ×1（管壁磨损）
+#   综合故障  ×1（联动设备故障）
+#   振动超标  ×1（转子不平衡）
+#   含氧量异常 ×1（密封泄漏）
+
+cases:
+  # ============ 轴承过热（3 条） ============
+  - case_id: "CASE_001"
+    fault_type: "轴承过热"
+    fault_subtype: "轴承润滑不足"
+    symptom_pattern: "bearing_temperature↑ AND bearing_vibration↑"
+    description: "轴承温度持续上升伴随振动缓慢增大，通常由于润滑油脂不足或油脂老化污染导致。温升速率约 0.5-1.0°C/min，振动增幅滞后于温升约 10-15 分钟。"
+    cause_analysis: "1.润滑油量不足（油位低于最低刻度） 2.油脂污染老化（含水量或金属颗粒超标） 3.注油周期过长 4.油路堵塞"
+    repair_plan: "1.停机冷却至环境温度后检查润滑油位及油质 2.补充同型号润滑脂至标准刻度 3.如油质发黑或含水，排空旧油并清洗油腔后重新注油 4.若振动仍超标，使用振动检测仪采集频谱判断是否伴随磨损 5.恢复运行后持续监测 30 分钟确认温升趋势缓解"
+    required_tools: "油脂枪、红外测温仪、振动检测仪、油质检测盒、扳手套装"
+    required_parts: "润滑脂（型号：聚脲基 KL-Grease EP2）、备用油封"
+    estimated_duration_min: 120
+    severity: "中"
+    historical_frequency: "月均1-2次"
+    source: "企业案例"
+    last_updated: "2026-07-01"
+    reference_count: 8
+
+  - case_id: "CASE_002"
+    fault_type: "轴承过热"
+    fault_subtype: "轴承磨损失效"
+    symptom_pattern: "bearing_temperature↑ AND bearing_vibration↑ AND bearing_vibration高频分量↑"
+    description: "轴承温度急剧上升（>1.5°C/min）伴随振动高频分量显著增大，通常由滚动体或滚道疲劳剥落引起。频谱特征为出现非整数倍转速频率的高频冲击成分。"
+    cause_analysis: "1.滚动体疲劳剥落（已达设计寿命） 2.滚道点蚀 3.保持架断裂 4.润滑不良导致的二次磨损"
+    repair_plan: "1.立即降负荷运行并准备停机（红色预警需立即停机） 2.采集振动频谱确认失效模式 3.停机后拆卸轴承检查磨损程度 4.更换同型号备用轴承，检查配合间隙 5.新轴承安装后跑合试运行 2 小时，监测温升与振动恢复至正常区间"
+    required_tools: "振动频谱分析仪、轴承拉马、千分表、热电偶、扭矩扳手、内径千分尺"
+    required_parts: "备用轴承（型号：SKF 6322 C3）、轴承座密封圈、润滑脂、防松垫片"
+    estimated_duration_min: 360
+    severity: "高"
+    historical_frequency: "季均1次"
+    source: "行业手册"
+    last_updated: "2026-06-15"
+    reference_count: 5
+
+  - case_id: "CASE_003"
+    fault_type: "轴承过热"
+    fault_subtype: "冷却水系统失效"
+    symptom_pattern: "bearing_temperature↑ AND cooling_water_temp↑"
+    description: "轴承温度与冷却水温度同步上升，冷却水回水温度超过 45°C，通常由冷却水管路堵塞或冷却水泵故障导致散热能力下降。"
+    cause_analysis: "1.冷却水管路结垢堵塞 2.冷却水泵故障或流量不足 3.冷却塔散热能力下降 4.冷却水阀未全开"
+    repair_plan: "1.检查冷却水进出口温差判断流量 2.检查冷却水泵运行状态及电流 3.反冲洗冷却水管路清除水垢 4.全开冷却水阀门并调节流量 5.若结垢严重，安排化学清洗 6.恢复后监测冷却水回水温度降至 40°C 以下"
+    required_tools: "红外测温仪、流量计、压力表、管钳、水垢清洗设备"
+    required_parts: "冷却水过滤器滤芯、密封垫片、管路清洗剂"
+    estimated_duration_min: 180
+    severity: "中"
+    historical_frequency: "月均1次"
+    source: "经验总结"
+    last_updated: "2026-07-10"
+    reference_count: 3
+
+  # ============ 烟气超标（3 条） ============
+  - case_id: "CASE_004"
+    fault_type: "烟气超标"
+    fault_subtype: "燃烧异常导致烟气超标"
+    symptom_pattern: "so2_concentration↑ AND nox_concentration↑ AND oxygen_content↓"
+    description: "SO₂、NOx 浓度同步上升且炉膛含氧量下降，通常由配风不合理或燃烧温度异常导致燃烧不充分。CEMS 监测值接近或超过 GB18485-2020 限值（SO₂ 日均 200、NOx 日均 200 mg/Nm³）。"
+    cause_analysis: "1.一次风/二次风配比失调 2.燃烧温度偏低导致不完全燃烧 3.给料热值波动大 4.烟气脱酸反应不充分"
+    repair_plan: "1.检查并调整一二次风配比（提高二次风比例加强扰动） 2.提高炉膛温度至 950°C 以上确保完全燃烧 3.检查给料均匀性，必要时调整给料速率 4.确认脱硫脱硝系统喷氨/石灰浆流量正常 5.持续监测 CEMS 数据 30 分钟确认下降趋势"
+    required_tools: "便携式烟气分析仪、风量计、CEMS 校准气、红外测温仪"
+    required_parts: "石灰浆、尿素/氨水（脱硝还原剂）、CEMS 滤芯"
+    estimated_duration_min: 90
+    severity: "高"
+    historical_frequency: "月均2-3次"
+    source: "文献"
+    last_updated: "2026-06-20"
+    reference_count: 6
+
+  - case_id: "CASE_005"
+    fault_type: "烟气超标"
+    fault_subtype: "脱硫剂供给不足"
+    symptom_pattern: "so2_concentration↑ AND oxygen_content正常"
+    description: "SO₂ 浓度单边上升而 NOx 与含氧量基本正常，通常由半干法脱硫的石灰浆喷射量不足或雾化喷嘴堵塞导致脱硫效率下降。"
+    cause_analysis: "1.石灰浆制备浓度偏低 2.喷浆泵流量不足或故障 3.雾化喷嘴堵塞 4.石灰浆管路泄漏"
+    repair_plan: "1.检查石灰浆制备浓度与流量 2.检查喷浆泵运行电流与压力 3.清洗或更换堵塞的雾化喷嘴 4.检查管路有无泄漏 5.提高石灰浆喷射量至设计值 6.监测 SO₂ 排放恢复至 100 mg/Nm³ 以下"
+    required_tools: "pH 计、流量计、压力表、喷嘴清洗工具、管道测厚仪"
+    required_parts: "雾化喷嘴、石灰浆泵密封件、石灰粉"
+    estimated_duration_min: 150
+    severity: "中"
+    historical_frequency: "月均1次"
+    source: "企业案例"
+    last_updated: "2026-07-05"
+    reference_count: 4
+
+  - case_id: "CASE_006"
+    fault_type: "烟气超标"
+    fault_subtype: "给料不均导致燃烧波动"
+    symptom_pattern: "so2_concentration↑ AND nox_concentration波动 AND feed_rate波动"
+    description: "SO₂ 与 NOx 浓度呈周期性波动且给料速度波动增大，通常由垃圾给料不均导致炉内热负荷波动，引发燃烧工况不稳定。"
+    cause_analysis: "1.垃圾池发酵不均导致热值波动 2.给料起重机投料不均 3.炉排推料频率设定不当 4.料层厚度不均"
+    repair_plan: "1.检查垃圾池发酵与混合情况，加强垃圾翻拌 2.调整给料起重机投料节奏 3.优化炉排推料参数使料层均匀 4.必要时降低负荷稳定燃烧 5.监测 CEMS 数据恢复稳定"
+    required_tools: "料层测厚仪、红外测温仪、给料监控系统"
+    required_parts: "无（参数调整为主）"
+    estimated_duration_min: 60
+    severity: "低"
+    historical_frequency: "周均1-2次"
+    source: "经验总结"
+    last_updated: "2026-07-12"
+    reference_count: 2
+
+  # ============ 炉排卡滞（2 条） ============
+  - case_id: "CASE_007"
+    fault_type: "炉排卡滞"
+    fault_subtype: "异物卡阻炉排"
+    symptom_pattern: "grate_speed↓ AND feed_rate↓ AND furnace_pressure↑"
+    description: "炉排速度骤降或波动后骤降，给料速度同步下降，炉膛压力升高（由通风阻力增大引起）。通常由大块异物（金属、混凝土块）卡入炉排片间隙导致机械卡阻。"
+    cause_analysis: "1.垃圾中混入大块金属或混凝土异物 2.炉排片断裂碎片卡入 3.灰渣结块堵塞 4.炉排驱动过载保护动作"
+    repair_plan: "1.立即停炉排驱动并切断给料 2.通过检修孔检查卡阻位置 3.使用专用工具取出异物 4.检查炉排片有无损坏并更换断裂片 5.清理结块灰渣 6.空载试运行炉排确认动作顺畅 7.恢复给料并监测炉排电流与速度"
+    required_tools: "内窥镜、异物取出工具、炉排片检查量具、扭矩扳手、行车"
+    required_parts: "备用炉排片、炉排销轴、耐高温密封件"
+    estimated_duration_min: 240
+    severity: "高"
+    historical_frequency: "月均1次"
+    source: "企业案例"
+    last_updated: "2026-06-28"
+    reference_count: 7
+
+  - case_id: "CASE_008"
+    fault_type: "炉排卡滞"
+    fault_subtype: "炉排机械磨损卡阻"
+    symptom_pattern: "grate_speed波动↑ AND furnace_pressure↑"
+    description: "炉排速度波动率持续增大并伴随炉膛压力升高，无骤降现象。通常由炉排片长期磨损导致配合间隙异常，运动阻力逐渐增大。"
+    cause_analysis: "1.炉排片耐磨层磨损 2.导轨磨损导致运动轨迹偏移 3.炉排销轴磨损 4.润滑不足导致干摩擦"
+    repair_plan: "1.检查炉排片磨损量与间隙 2.测量导轨直线度与磨损 3.更换磨损超标的炉排片与销轴 4.调整导轨间隙 5.补充炉排专用高温润滑剂 6.带载试运行并监测电流波动"
+    required_tools: "炉排片测量样板、塞尺、游标卡尺、内径千分尺、行车"
+    required_parts: "炉排片、炉排销轴、高温润滑剂、调整垫片"
+    estimated_duration_min: 480
+    severity: "中"
+    historical_frequency: "半年1次"
+    source: "行业手册"
+    last_updated: "2026-05-30"
+    reference_count: 3
+
+  # ============ 锅炉泄漏（1 条） ============
+  - case_id: "CASE_009"
+    fault_type: "锅炉泄漏"
+    fault_subtype: "水冷壁管壁磨损泄漏"
+    symptom_pattern: "steam_pressure↓ AND steam_flow↓ AND furnace_temperature↑"
+    description: "蒸汽压力与蒸汽流量同步下降而炉膛温度升高，通常由水冷壁管壁因高温腐蚀或磨损减薄导致泄漏，工质损失使蒸发量下降。"
+    cause_analysis: "1.水冷壁管高温腐蚀减薄 2.吹灰器冲刷磨损 3.管材质量缺陷 4.局部超温导致过热蠕变"
+    repair_plan: "1.立即降负荷并准备停炉 2.停炉冷却后进行水压试验定位漏点 3.对泄漏管段进行补焊或更换 4.检查周围管壁测厚，预防性处理减薄管段 5.优化吹灰器运行参数减少冲刷 6.水压试验合格后恢复运行"
+    required_tools: "超声波测厚仪、水压试验泵、焊机、内窥镜、光谱仪"
+    required_parts: "水冷壁管（同材质同规格）、焊材、密封堵头"
+    estimated_duration_min: 720
+    severity: "高"
+    historical_frequency: "年均1次"
+    source: "文献"
+    last_updated: "2026-05-10"
+    reference_count: 4
+
+  # ============ 综合故障（1 条） ============
+  - case_id: "CASE_010"
+    fault_type: "综合故障"
+    fault_subtype: "联动设备故障"
+    symptom_pattern: "bearing_vibration↑ AND bearing_temperature↑ AND steam_pressure↓"
+    description: "轴承振动与温度同时升高，且蒸汽压力下降，通常由引风机/送风机与汽轮机联动设备故障引起，可能存在转子不平衡与轴承故障并发。"
+    cause_analysis: "1.风机转子积灰导致不平衡 2.联轴器对中不良 3.基础松动放大振动 4.轴承故障传递至联动设备"
+    repair_plan: "1.立即降负荷并评估是否需停机 2.采集振动频谱区分强迫振动与自激振动 3.检查联轴器对中数据 4.清理风机转子积灰做动平衡 5.复紧基础地脚螺栓 6.排除轴承故障后恢复联动试运行"
+    required_tools: "振动频谱分析仪、动平衡仪、激光对中仪、力矩扳手、千分表"
+    required_parts: "联轴器弹性元件、平衡配重块、地脚螺栓防松件"
+    estimated_duration_min: 480
+    severity: "高"
+    historical_frequency: "半年1次"
+    source: "企业案例"
+    last_updated: "2026-06-05"
+    reference_count: 5
+
+  # ============ 衍生故障（2 条） ============
+  - case_id: "CASE_011"
+    fault_type: "振动超标"
+    fault_subtype: "转子不平衡"
+    symptom_pattern: "bearing_vibration↑ AND bearing_temperature正常"
+    description: "轴承振动明显增大但温度正常，频谱以 1 倍转速频率为主，通常由风机/泵转子积灰或磨损导致质量分布不均。"
+    cause_analysis: "1.引风机叶片积灰不均 2.叶片局部磨损 3.平衡块脱落 4.联轴器螺栓缺失"
+    repair_plan: "1.采集振动频谱确认 1 倍频主导 2.停机清理转子积灰 3.做现场动平衡校正 4.检查叶片磨损与平衡块 5.恢复运行后复测振动值降至 4.5 mm/s 以下"
+    required_tools: "动平衡仪、振动频谱分析仪、清灰工具、配重块"
+    required_parts: "平衡配重块、联轴器螺栓"
+    estimated_duration_min: 180
+    severity: "中"
+    historical_frequency: "季均1次"
+    source: "行业手册"
+    last_updated: "2026-06-25"
+    reference_count: 3
+
+  - case_id: "CASE_012"
+    fault_type: "含氧量异常"
+    fault_subtype: "炉膛密封泄漏"
+    symptom_pattern: "oxygen_content↑ AND furnace_pressure↓"
+    description: "炉膛含氧量异常升高且炉膛压力下降（负压增大），通常由炉膛密封不良导致漏风增大，影响燃烧效率。"
+    cause_analysis: "1.炉门密封老化 2.窥视孔/检修门密封损坏 3.炉墙耐火材料开裂 4.烟道膨胀节泄漏"
+    repair_plan: "1.检查炉门与各检修门密封状态 2.更换老化密封绳/密封垫 3.修补炉墙耐火材料裂缝 4.检查并更换损坏的膨胀节 5.密封处理完毕后做漏风试验 6.恢复后监测含氧量与炉膛压力恢复至正常区间"
+    required_tools: "红外热像仪、漏风检测仪、耐火材料修补工具、密封压紧工具"
+    required_parts: "陶瓷纤维密封绳、密封垫片、耐火修补料、膨胀节"
+    estimated_duration_min: 240
+    severity: "中"
+    historical_frequency: "半年1次"
+    source: "经验总结"
+    last_updated: "2026-06-18"
+    reference_count: 2

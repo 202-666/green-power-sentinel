@@ -1,0 +1,126 @@
+{
+  "results": [
+    {
+      "fault_name": "轴承过热",
+      "rows": 43200,
+      "metrics": {
+        "recall": 0.95,
+        "precision": 0.912,
+        "f1": 0.9306,
+        "tp": 114,
+        "fn": 6,
+        "fp": 11,
+        "tn": 43069,
+        "fault_total": 120,
+        "normal_total": 43080
+      },
+      "timing": {
+        "threshold_s": 1.759,
+        "trend_s": 0.256,
+        "volatility_s": 10.014,
+        "correlation_s": 0.177,
+        "ensemble_s": 29.069,
+        "total_s": 41.275
+      },
+      "level_dist": {
+        "green": 43075,
+        "orange": 65,
+        "red": 39,
+        "yellow": 21
+      }
+    },
+    {
+      "fault_name": "烟气超标",
+      "rows": 43200,
+      "metrics": {
+        "recall": 0.8778,
+        "precision": 0.908,
+        "f1": 0.8927,
+        "tp": 158,
+        "fn": 22,
+        "fp": 16,
+        "tn": 43004,
+        "fault_total": 180,
+        "normal_total": 43020
+      },
+      "timing": {
+        "threshold_s": 1.768,
+        "trend_s": 0.261,
+        "volatility_s": 10.025,
+        "correlation_s": 0.155,
+        "ensemble_s": 28.715,
+        "total_s": 40.924
+      },
+      "level_dist": {
+        "green": 43026,
+        "orange": 139,
+        "yellow": 28,
+        "red": 7
+      }
+    },
+    {
+      "fault_name": "炉排卡滞",
+      "rows": 43200,
+      "metrics": {
+        "recall": 0.9222,
+        "precision": 0.7411,
+        "f1": 0.8218,
+        "tp": 83,
+        "fn": 7,
+        "fp": 29,
+        "tn": 43081,
+        "fault_total": 90,
+        "normal_total": 43110
+      },
+      "timing": {
+        "threshold_s": 1.778,
+        "trend_s": 0.26,
+        "volatility_s": 10.028,
+        "correlation_s": 0.174,
+        "ensemble_s": 29.042,
+        "total_s": 41.282
+      },
+      "level_dist": {
+        "green": 43088,
+        "orange": 71,
+        "yellow": 36,
+        "red": 5
+      }
+    },
+    {
+      "fault_name": "正常数据",
+      "rows": 43200,
+      "metrics": {
+        "recall": 0.0,
+        "precision": 0.0,
+        "f1": 0.0,
+        "tp": 0,
+        "fn": 0,
+        "fp": 0,
+        "tn": 43200,
+        "fault_total": 0,
+        "normal_total": 43200
+      },
+      "timing": {
+        "threshold_s": 1.773,
+        "trend_s": 0.255,
+        "volatility_s": 10.021,
+        "correlation_s": 0.175,
+        "ensemble_s": 28.67,
+        "total_s": 40.894
+      },
+      "level_dist": {
+        "green": 43200
+      }
+    }
+  ],
+  "overall": {
+    "recall": 0.9103,
+    "precision": 0.8637,
+    "f1": 0.8864,
+    "tp": 355,
+    "fn": 35,
+    "fp": 56,
+    "verdict": "PASS"
+  }
+}

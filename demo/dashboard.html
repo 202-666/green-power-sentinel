@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>绿电哨兵 · 全链路联调仪表盘</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<!-- 内嵌数据(run_single_fault.py 生成);若不存在则回退到 fetch JSON -->
+<script src="dashboard_data.js"></script>
+<style>
+  :root{
+    --bg:#0b1220; --bg2:#121b2e; --card:#16213a; --card2:#1c2a48;
+    --border:#243352; --text:#e6edf6; --muted:#8a99b8;
+    --green:#22c55e; --cyan:#06b6d4; --yellow:#eab308; --orange:#f97316; --red:#ef4444;
+    --shadow:0 4px 20px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:20px}
+  .wrap{max-width:1500px;margin:0 auto}
+  /* Header */
+  .header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;padding:18px 24px;background:linear-gradient(135deg,#0f1b30 0%,#1a2b4a 100%);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);margin-bottom:20px}
+  .title-block{display:flex;align-items:center;gap:14px}
+  .logo{width:44px;height:44px;border-radius:11px;background:linear-gradient(135deg,#22c55e,#06b6d4);display:flex;align-items:center;justify-content:center;font-size:22px;box-shadow:0 0 18px rgba(34,197,94,.35)}
+  .title h1{font-size:20px;font-weight:700;letter-spacing:.5px}
+  .title .sub{font-size:12px;color:var(--muted);margin-top:2px}
+  .status-badge{display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border-radius:999px;font-size:13px;font-weight:600}
+  .status-pass{background:rgba(34,197,94,.15);color:var(--green);border:1px solid rgba(34,197,94,.4)}
+  .status-fail{background:rgba(239,68,68,.15);color:var(--red);border:1px solid rgba(239,68,68,.4)}
+  .status-loading{background:rgba(234,179,8,.15);color:var(--yellow);border:1px solid rgba(234,179,8,.4)}
+  .dot{width:8px;height:8px;border-radius:50%;background:currentColor;animation:pulse 1.6s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  /* KPI */
+  .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}
+  .kpi{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 18px;position:relative;overflow:hidden}
+  .kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent,var(--green))}
+  .kpi .lbl{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+  .kpi .val{font-size:26px;font-weight:700;margin-top:6px}
+  .kpi .delta{font-size:11px;color:var(--muted);margin-top:4px}
+  /* Fault cards */
+  .fault-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px}
+  .fault-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;transition:transform .2s;cursor:pointer}
+  .fault-card:hover{transform:translateY(-2px)}
+  .fault-card.pass{border-left:3px solid var(--green)}
+  .fault-card.fail{border-left:3px solid var(--red)}
+  .fault-card.active{border-color:var(--cyan);box-shadow:0 0 0 2px rgba(6,182,212,.2)}
+  .fc-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+  .fc-name{font-size:15px;font-weight:700}
+  .fc-tag{font-size:11px;padding:3px 8px;border-radius:4px;font-weight:600}
+  .fc-tag.pass{background:rgba(34,197,94,.15);color:var(--green)}
+  .fc-tag.fail{background:rgba(239,68,68,.15);color:var(--red)}
+  .fc-metrics{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;font-size:12px}
+  .fc-metric{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--border)}
+  .fc-metric .k{color:var(--muted)}
+  .fc-metric .v{font-weight:600}
+  /* Charts */
+  .chart-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+  .chart-row.three{grid-template-columns:1fr 1fr 1fr}
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px}
+  .panel-title{font-size:14px;font-weight:600;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+  .panel-title .hint{font-size:11px;color:var(--muted);font-weight:400}
+  .chart{width:100%;height:300px}
+  .chart.tall{height:340px}
+  /* Tabs */
+  .tabs{display:flex;gap:6px;flex-wrap:wrap}
+  .tab{padding:5px 12px;font-size:12px;border-radius:6px;background:var(--card2);border:1px solid var(--border);color:var(--muted);cursor:pointer;transition:all .15s;user-select:none}
+  .tab:hover{color:var(--text)}
+  .tab.active{background:rgba(6,182,212,.18);color:var(--cyan);border-color:rgba(6,182,212,.5)}
+  /* Table */
+  .table-wrap{overflow-x:auto;max-height:380px;overflow-y:auto}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  thead th{position:sticky;top:0;background:var(--card2);color:var(--muted);text-align:left;padding:9px 10px;font-weight:600;border-bottom:1px solid var(--border);z-index:2;cursor:pointer;white-space:nowrap}
+  thead th:hover{color:var(--text)}
+  thead th .sort-arrow{font-size:9px;margin-left:3px;opacity:.6}
+  tbody td{padding:8px 10px;border-bottom:1px solid var(--border);color:var(--text)}
+  tbody tr:hover{background:rgba(255,255,255,.02)}
+  .lvl{display:inline-block;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600}
+  .lvl-red{background:rgba(239,68,68,.18);color:var(--red)}
+  .lvl-orange{background:rgba(249,115,22,.18);color:var(--orange)}
+  .lvl-yellow{background:rgba(234,179,8,.18);color:var(--yellow)}
+  .lvl-green{background:rgba(34,197,94,.18);color:var(--green)}
+  /* Filter bar */
+  .filter-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+  .filter-bar select{background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;outline:none}
+  /* Perf mini-bars */
+  .perf-bars{display:flex;flex-direction:column;gap:8px}
+  .perf-item{display:flex;align-items:center;gap:10px;font-size:12px}
+  .perf-item .lbl{width:90px;color:var(--muted);flex-shrink:0}
+  .perf-item .bar{flex:1;height:18px;background:var(--bg2);border-radius:4px;overflow:hidden;position:relative}
+  .perf-item .fill{height:100%;background:linear-gradient(90deg,var(--cyan),var(--green));border-radius:4px;transition:width .4s}
+  .perf-item .val{width:80px;text-align:right;font-weight:600;flex-shrink:0}
+  /* Footer */
+  .footer{margin-top:18px;padding:14px 20px;background:var(--card);border:1px solid var(--border);border-radius:10px;font-size:12px;color:var(--muted);display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+  .footer code{color:var(--cyan);background:var(--bg2);padding:2px 6px;border-radius:4px}
+  /* Loader */
+  .loader{position:fixed;inset:0;background:rgba(11,18,32,.95);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:999}
+  .spinner{width:44px;height:44px;border:3px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .loader p{margin-top:16px;color:var(--muted);font-size:13px}
+  /* Responsive */
+  @media(max-width:900px){
+    .kpi-row{grid-template-columns:repeat(2,1fr)}
+    .fault-grid{grid-template-columns:1fr}
+    .chart-row,.chart-row.three{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div id="loader" class="loader">
+  <div class="spinner"></div>
+  <p>正在加载全链路联调数据…</p>
+</div>
+
+<div class="wrap" id="app" style="display:none">
+  <!-- Header -->
+  <div class="header">
+    <div class="title-block">
+      <div class="logo">⚡</div>
+      <div class="title">
+        <h1>绿电哨兵 · 全链路联调仪表盘</h1>
+        <div class="sub">W6 验收 · 焚烧炉设备异常检测四Agent流水线 · <span id="genTime">-</span></div>
+      </div>
+    </div>
+    <div id="statusBadge" class="status-badge status-loading">
+      <span class="dot"></span><span id="statusText">加载中</span>
+    </div>
+  </div>
+
+  <!-- KPI -->
+  <div class="kpi-row" id="kpiRow"></div>
+
+  <!-- Fault verification cards -->
+  <div class="fault-grid" id="faultGrid"></div>
+
+  <!-- Row 1: risk distribution + method breakdown + perf -->
+  <div class="chart-row three">
+    <div class="panel">
+      <div class="panel-title">风险等级分布 <span class="hint">按故障类型堆叠</span></div>
+      <div id="chartRisk" class="chart"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">检测方法贡献 <span class="hint">各方法触发异常次数</span></div>
+      <div id="chartMethod" class="chart"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">端到端性能 <span class="hint"><select id="perfFaultSelect" style="background:#1c2a48;color:#e6edf6;border:1px solid #243352;border-radius:4px;padding:2px 6px;font-size:11px"></select></span></div>
+      <div id="perfBars" class="perf-bars" style="margin-top:10px"></div>
+    </div>
+  </div>
+
+  <!-- Row 2: risk score time series -->
+  <div class="panel" style="margin-bottom:14px">
+    <div class="panel-title">
+      <span>风险评分时间序列</span>
+      <div class="tabs" id="faultTabs"></div>
+    </div>
+    <div id="chartScore" class="chart tall"></div>
+  </div>
+
+  <!-- Row 3: key param trends -->
+  <div class="panel" style="margin-bottom:14px">
+    <div class="panel-title">
+      <span>关键参数趋势</span>
+      <div class="tabs" id="paramTabs"></div>
+    </div>
+    <div id="chartParam" class="chart tall"></div>
+  </div>
+
+  <!-- Row 4: anomaly events table -->
+  <div class="panel">
+    <div class="panel-title">
+      <span>异常事件明细</span>
+      <span class="hint">显示前 80 条 · <span id="anomalyCount">0</span> 条总记录</span>
+    </div>
+    <div class="filter-bar">
+      <span style="font-size:12px;color:var(--muted)">筛选:</span>
+      <select id="filterFault"><option value="all">全部故障</option></select>
+      <select id="filterLevel">
+        <option value="all">全部等级</option>
+        <option value="red">红色</option>
+        <option value="orange">橙色</option>
+        <option value="yellow">黄色</option>
+      </select>
+      <span style="font-size:11px;color:var(--muted)">点击表头排序</span>
+    </div>
+    <div class="table-wrap">
+      <table id="anomalyTable">
+        <thead>
+          <tr>
+            <th data-sort="trigger_time">触发时间<span class="sort-arrow">↕</span></th>
+            <th data-sort="device">设备</th>
+            <th data-sort="fault_type">故障类型</th>
+            <th data-sort="risk_level">风险<span class="sort-arrow">↕</span></th>
+            <th data-sort="score">评分<span class="sort-arrow">↕</span></th>
+            <th data-sort="confidence">置信度</th>
+            <th data-sort="detection_method">检测方法</th>
+            <th data-sort="abnormal_params">异常参数</th>
+          </tr>
+        </thead>
+        <tbody id="anomalyBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="footer">
+    <span>数据源: <code>demo_output/all_faults_summary.json</code> · <code>dashboard_data.js</code>(内嵌)</span>
+    <span>绿电哨兵 v1.0 · W6 全链路联调验收</span>
+  </div>
+</div>
+
+<script>
+// ===== 数据加载 =====
+async function loadData(){
+  if(window.__DASHBOARD_DATA__){
+    return window.__DASHBOARD_DATA__;
+  }
+  try{
+    const resp = await fetch('demo_output/all_faults_summary.json');
+    if(resp.ok) return await resp.json();
+  }catch(e){}
+  return null;
+}
+
+// ===== 全局状态 =====
+let DATA = null;
+let activeFault = null;
+let activeParam = null;
+let sortKey = 'trigger_time';
+let sortAsc = false;
+let filterFault = 'all';
+let filterLevel = 'all';
+
+// ECharts 实例缓存（防止泄漏）
+const charts = {};
+function getChart(id){
+  if(!charts[id]){
+    charts[id] = echarts.init(document.getElementById(id));
+  }
+  return charts[id];
+}
+// 统一 resize
+window.addEventListener('resize', ()=>{
+  Object.values(charts).forEach(c=>c.resize());
+});
+
+const COLORS = {
+  red:'#ef4444', orange:'#f97316', yellow:'#eab308', green:'#22c55e', cyan:'#06b6d4',
+  series:['#22c55e','#06b6d4','#f97316','#a855f7','#ec4899','#eab308']
+};
+const LVL_LABEL = {red:'红色',orange:'橙色',yellow:'黄色',green:'绿色'};
+const FAULT_LABEL = {
+  bearing_overheat:'轴承过热', emission_exceed:'烟气超标', grate_jam:'炉排卡滞'
+};
+const LEVEL_ORDER = {red:0,orange:1,yellow:2,green:3};
+
+// ===== 工具函数 =====
+function expandTimeSeries(faultData){
+  // 兼容 v1(score_series) 和 v2(time_meta + score_values + score_levels) 格式
+  if(faultData.score_series && faultData.score_series.length){
+    return {
+      timestamps: faultData.score_series.map(p=>p.t),
+      scores: faultData.score_series.map(p=>p.score),
+      levels: faultData.score_series.map(p=>p.level),
+    };
+  }
+  const tm = faultData.time_meta || {};
+  const offsets = tm.time_offsets || [];
+  const base = tm.time_base;
+  const baseDt = base ? new Date(base.replace(' ','T')) : null;
+  const timestamps = offsets.map(off=>{
+    if(baseDt){
+      const d = new Date(baseDt.getTime() + off*60000);
+      return d.toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).replace(/\//g,'-');
+    }
+    return String(off);
+  });
+  const levelMap = ['green','yellow','orange','red'];
+  const levels = (faultData.score_levels||[]).map(lv=>levelMap[lv]||'green');
+  return {
+    timestamps,
+    scores: faultData.score_values || [],
+    levels,
+  };
+}
+
+function expandParamSeries(faultData, paramName){
+  // 兼容 v1(key_param_series with t/v) 和 v2(time_meta + param arrays) 格式
+  const ps = faultData.key_param_series || {};
+  const data = ps[paramName];
+  if(!data) return {timestamps:[],values:[]};
+  // v1: [{t,v}]
+  if(Array.isArray(data) && data[0] && typeof data[0]==='object' && 't' in data[0]){
+    return {
+      timestamps: data.map(p=>p.t),
+      values: data.map(p=>p.v),
+    };
+  }
+  // v2: plain array of values
+  const tm = faultData.time_meta || {};
+  const offsets = tm.time_offsets || [];
+  const base = tm.time_base;
+  const baseDt = base ? new Date(base.replace(' ','T')) : null;
+  const timestamps = offsets.map(off=>{
+    if(baseDt){
+      const d = new Date(baseDt.getTime() + off*60000);
+      return d.toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).replace(/\//g,'-');
+    }
+    return String(off);
+  });
+  return {timestamps, values: data};
+}
+
+function getRiskThresholds(){
+  // 优先从 config 读取,回退默认值
+  // 注意:当前数据格式不包含 thresholds,使用与 config.yaml 一致的值
+  return {red: 0.8, orange: 0.5, yellow: 0.3};
+}
+
+// ===== 初始化 =====
+loadData().then(d=>{
+  DATA = d;
+  document.getElementById('loader').style.display='none';
+  document.getElementById('app').style.display='block';
+  if(!d){
+    document.getElementById('statusText').textContent='无数据 (请运行 run_single_fault.py)';
+    return;
+  }
+  initFilters();
+  renderAll();
+  // 表头排序事件
+  document.querySelectorAll('#anomalyTable thead th[data-sort]').forEach(th=>{
+    th.onclick = ()=>{
+      const k = th.dataset.sort;
+      if(sortKey === k){ sortAsc = !sortAsc; }
+      else { sortKey = k; sortAsc = false; }
+      // 更新箭头
+      document.querySelectorAll('#anomalyTable thead th .sort-arrow').forEach(a=>a.textContent='↕');
+      th.querySelector('.sort-arrow').textContent = sortAsc ? '↑' : '↓';
+      renderAnomalyTable();
+    };
+  });
+  // 筛选事件
+  document.getElementById('filterFault').onchange = e=>{filterFault=e.target.value;renderAnomalyTable();};
+  document.getElementById('filterLevel').onchange = e=>{filterLevel=e.target.value;renderAnomalyTable();};
+  document.getElementById('perfFaultSelect').onchange = e=>{renderPerfBars(e.target.value);};
+});
+
+function initFilters(){
+  const faults = Object.keys(DATA.faults||{});
+  const sel = document.getElementById('filterFault');
+  faults.forEach(ft=>{
+    const opt = document.createElement('option');
+    opt.value = ft; opt.textContent = FAULT_LABEL[ft]||ft;
+    sel.appendChild(opt);
+  });
+  const perfSel = document.getElementById('perfFaultSelect');
+  perfSel.innerHTML = '';
+  faults.forEach(ft=>{
+    const opt = document.createElement('option');
+    opt.value = ft; opt.textContent = FAULT_LABEL[ft]||ft;
+    perfSel.appendChild(opt);
+  });
+}
+
+function renderAll(){
+  renderHeader();
+  renderKPI();
+  renderFaultCards();
+  renderRiskChart();
+  renderMethodChart();
+  renderFaultTabs();
+  renderParamTabs();
+  renderScoreChart();
+  renderParamChart();
+  renderPerfBars(activeFault || Object.keys(DATA.faults||{})[0]);
+  renderAnomalyTable();
+}
+
+// ===== Header =====
+function renderHeader(){
+  const m = DATA.meta||{};
+  const t = m.generated_at? new Date(m.generated_at).toLocaleString('zh-CN') : '-';
+  document.getElementById('genTime').textContent = t;
+  const badge = document.getElementById('statusBadge');
+  const txt = document.getElementById('statusText');
+  if(m.all_passed){
+    badge.className='status-badge status-pass';
+    txt.textContent='全部通过 ✓';
+  }else{
+    badge.className='status-badge status-fail';
+    txt.textContent='存在未通过项';
+  }
+}
+
+// ===== KPI =====
+function renderKPI(){
+  const faults = Object.values(DATA.faults||{});
+  const totalRecords = faults.reduce((s,f)=>s+(f.records_collected||0),0);
+  const totalAnomalies = faults.reduce((s,f)=>s+(f.anomalies_detected||0),0);
+  const totalAlerts = faults.reduce((s,f)=>s+(f.alerts_pushed||0),0);
+  const adviceCount = faults.filter(f=>f.advice_generated).length;
+
+  // 加权平均提前量: 按故障严重程度/重要性加权,此处简单平均但区分"提前发现"和"即时发现"
+  const advances = faults.map(f=>f.verification?.advance_min).filter(x=>x!=null && x!==undefined);
+  const earlyCount = advances.filter(x=>x>0).length;
+  const avgAdvance = advances.length? (advances.reduce((a,b)=>a+b,0)/advances.length).toFixed(1) : '-';
+  const totalDur = faults.reduce((s,f)=>s+(f.perf?.total_duration_s||0),0).toFixed(1);
+  const throughput = totalDur>0 ? Math.round(totalRecords/totalDur) : 0;
+
+  const kpis = [
+    {lbl:'采集记录总数',val:totalRecords.toLocaleString(),delta:`${faults.length} 类故障 × 30天分钟级`,accent:'var(--cyan)'},
+    {lbl:'异常/推送',val:`${totalAnomalies.toLocaleString()} / ${totalAlerts}`,delta:`运维建议生成 ${adviceCount}/${faults.length}`,accent:'var(--orange)'},
+    {lbl:'平均预警提前量',val:avgAdvance+' min',delta:`提前发现 ${earlyCount}/${advances.length} 类故障`,accent:'var(--green)'},
+    {lbl:'处理吞吐量',val:throughput+' 条/s',delta:`总耗时 ${totalDur}s`,accent:'var(--yellow)'},
+  ];
+  document.getElementById('kpiRow').innerHTML = kpis.map(k=>`
+    <div class="kpi" style="--accent:${k.accent}">
+      <div class="lbl">${k.lbl}</div>
+      <div class="val">${k.val}</div>
+      <div class="delta">${k.delta}</div>
+    </div>`).join('');
+}
+
+// ===== Fault cards =====
+function renderFaultCards(){
+  const faults = Object.values(DATA.faults||{});
+  document.getElementById('faultGrid').innerHTML = faults.map(f=>{
+    const v = f.verification||{};
+    const pass = v.passed;
+    const lc = f.level_counts||{};
+    const active = f.fault_type === activeFault ? 'active' : '';
+    return `
+    <div class="fault-card ${pass?'pass':'fail'} ${active}" data-ft="${f.fault_type}">
+      <div class="fc-head">
+        <span class="fc-name">${f.fault_name||f.fault_type}</span>
+        <span class="fc-tag ${pass?'pass':'fail'}">${pass?'✓ 检出':'✗ 未检出'}</span>
+      </div>
+      <div class="fc-metrics">
+        <div class="fc-metric"><span class="k">设备</span><span class="v">${f.device_id||'-'}</span></div>
+        <div class="fc-metric"><span class="k">记录数</span><span class="v">${(f.records_collected||0).toLocaleString()}</span></div>
+        <div class="fc-metric"><span class="k">异常数</span><span class="v">${f.anomalies_detected||0}</span></div>
+        <div class="fc-metric"><span class="k">推送数</span><span class="v">${f.alerts_pushed||0}</span></div>
+        <div class="fc-metric"><span class="k">红/橙/黄</span><span class="v">${lc.red||0}/${lc.orange||0}/${lc.yellow||0}</span></div>
+        <div class="fc-metric"><span class="k">提前量</span><span class="v">${v.advance_min!=null?v.advance_min+' min':'-'}</span></div>
+        <div class="fc-metric" style="grid-column:span 2"><span class="k">故障前预警/区间内</span><span class="v">${v.detection_count_before_fault||0} / ${v.detection_count_in_window||0}</span></div>
+      </div>
+    </div>`;
+  }).join('');
+  // 点击卡片切换故障
+  document.querySelectorAll('.fault-card').forEach(card=>{
+    card.onclick = ()=>{
+      activeFault = card.dataset.ft;
+      renderFaultCards();
+      renderFaultTabs();
+      renderScoreChart();
+      renderParamTabs();
+      renderParamChart();
+      renderPerfBars(activeFault);
+    };
+  });
+}
+
+// ===== Risk distribution chart =====
+function renderRiskChart(){
+  const chart = getChart('chartRisk');
+  const faults = Object.values(DATA.faults||{});
+  const names = faults.map(f=>f.fault_name||f.fault_type);
+  const levels = ['red','orange','yellow','green'];
+  const series = levels.map(lv=>({
+    name: LVL_LABEL[lv],
+    type:'bar',
+    stack:'total',
+    emphasis:{focus:'series'},
+    itemStyle:{color:COLORS[lv]},
+    data: faults.map(f=>(f.level_counts||{})[lv]||0)
+  }));
+  chart.setOption({
+    tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},
+    legend:{textStyle:{color:'#8a99b8'},top:0},
+    grid:{left:50,right:20,top:40,bottom:30},
+    xAxis:{type:'category',data:names,axisLabel:{color:'#e6edf6'}},
+    yAxis:{type:'value',axisLabel:{color:'#8a99b8'},splitLine:{lineStyle:{color:'#243352'}}},
+    series
+  }, true);
+}
+
+// ===== Method breakdown chart =====
+function renderMethodChart(){
+  const chart = getChart('chartMethod');
+  const faults = Object.values(DATA.faults||{});
+  const methodMap = {};
+  faults.forEach(f=>{
+    Object.entries(f.method_counts||{}).forEach(([m,c])=>{
+      methodMap[m] = (methodMap[m]||0)+c;
+    });
+  });
+  const data = Object.entries(methodMap).map(([n,v])=>({name:n,value:v}));
+  chart.setOption({
+    tooltip:{trigger:'item',formatter:'{b}: {c} ({d}%)'},
+    legend:{type:'scroll',orient:'vertical',right:5,top:'middle',textStyle:{color:'#8a99b8',fontSize:11}},
+    series:[{
+      type:'pie',
+      radius:['40%','70%'],
+      center:['38%','55%'],
+      avoidLabelOverlap:true,
+      itemStyle:{borderColor:'#16213a',borderWidth:2},
+      label:{show:false},
+      emphasis:{label:{show:true,position:'center',fontWeight:'bold',color:'#e6edf6'}},
+      data
+    }]
+  }, true);
+}
+
+// ===== Fault tabs for score chart =====
+function renderFaultTabs(){
+  const faults = Object.keys(DATA.faults||{});
+  if(!activeFault && faults.length) activeFault = faults[0];
+  const tabs = document.getElementById('faultTabs');
+  tabs.innerHTML = faults.map(ft=>`
+    <div class="tab ${ft===activeFault?'active':''}" data-ft="${ft}">${FAULT_LABEL[ft]||ft}</div>
+  `).join('');
+  tabs.querySelectorAll('.tab').forEach(el=>{
+    el.onclick=()=>{
+      activeFault = el.dataset.ft;
+      renderFaultTabs();
+      renderFaultCards();
+      renderScoreChart();
+      renderParamTabs();
+      renderParamChart();
+      renderPerfBars(activeFault);
+    };
+  });
+}
+
+// ===== Score time series chart =====
+function renderScoreChart(){
+  const chart = getChart('chartScore');
+  const f = (DATA.faults||{})[activeFault];
+  if(!f){return;}
+  const {timestamps, scores, levels} = expandTimeSeries(f);
+  const win = f.expected_window||{};
+  const thresholds = getRiskThresholds();
+
+  // 格式化阈值标记线
+  const markLines = [];
+  [['red', thresholds.red], ['orange', thresholds.orange], ['yellow', thresholds.yellow]].forEach(([lv,val])=>{
+    if(val!=null){
+      markLines.push({
+        yAxis: val,
+        lineStyle:{color:COLORS[lv],type:'dashed',width:1},
+        label:{formatter:`${LVL_LABEL[lv]} ${val}`,color:COLORS[lv],fontSize:10,position:'insideEndTop'}
+      });
+    }
+  });
+
+  // markArea: 故障注入区间
+  const markAreas = [];
+  if(win.start && win.end){
+    markAreas.push([
+      {xAxis:win.start,itemStyle:{color:'rgba(249,115,22,.12)'}},
+      {xAxis:win.end}
+    ]);
+  }
+
+  chart.setOption({
+    tooltip:{trigger:'axis',formatter:p=>{
+      const i = p[0].dataIndex;
+      const lv = levels[i];
+      return `${p[0].axisValue}<br/>评分: <b>${p[0].data}</b><br/>等级: <span style="color:${COLORS[lv]}">${LVL_LABEL[lv]||lv}</span>`;
+    }},
+    grid:{left:55,right:20,top:30,bottom:60},
+    dataZoom:[{type:'inside'},{type:'slider',height:20,bottom:15,dataBackground:{lineStyle:{color:'#243352'},areaStyle:{color:'#16213a'}}}],
+    xAxis:{type:'category',data:timestamps,axisLabel:{color:'#8a99b8',fontSize:10,interval:'auto'},axisLine:{lineStyle:{color:'#243352'}}},
+    yAxis:{type:'value',min:0,max:1,axisLabel:{color:'#8a99b8'},splitLine:{lineStyle:{color:'#243352'}}},
+    series:[{
+      type:'line',
+      data:scores,
+      smooth:true,
+      symbol:'none',
+      lineStyle:{width:2,color:COLORS.cyan},
+      areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(6,182,212,.35)'},{offset:1,color:'rgba(6,182,212,.02)'}])},
+      markArea:{silent:true,data:markAreas},
+      markLine:{silent:true,symbol:'none',data:markLines}
+    }]
+  }, true);
+}
+
+// ===== Param tabs =====
+function renderParamTabs(){
+  const f = (DATA.faults||{})[activeFault];
+  if(!f){return;}
+  const params = f.key_params || Object.keys(f.key_param_series||{});
+  if(!params.length){return;}
+  if(!activeParam || !params.includes(activeParam)) activeParam = params[0];
+  const tabs = document.getElementById('paramTabs');
+  tabs.innerHTML = params.map(p=>`
+    <div class="tab ${p===activeParam?'active':''}" data-p="${p}">${p}</div>
+  `).join('');
+  tabs.querySelectorAll('.tab').forEach(el=>{
+    el.onclick=()=>{activeParam=el.dataset.p;renderParamTabs();renderParamChart();};
+  });
+}
+
+// ===== Param trend chart =====
+function renderParamChart(){
+  const chart = getChart('chartParam');
+  const f = (DATA.faults||{})[activeFault];
+  if(!f || !activeParam){return;}
+  const {timestamps, values} = expandParamSeries(f, activeParam);
+  const win = f.expected_window||{};
+  const markAreas = [];
+  if(win.start && win.end){
+    markAreas.push([{xAxis:win.start,itemStyle:{color:'rgba(249,115,22,.1)'}},{xAxis:win.end}]);
+  }
+  chart.setOption({
+    tooltip:{trigger:'axis',formatter:p=>`${p[0].axisValue}<br/>${activeParam}: <b>${p[0].data}</b>`},
+    grid:{left:65,right:20,top:30,bottom:60},
+    dataZoom:[{type:'inside'},{type:'slider',height:20,bottom:15,dataBackground:{lineStyle:{color:'#243352'},areaStyle:{color:'#16213a'}}}],
+    xAxis:{type:'category',data:timestamps,axisLabel:{color:'#8a99b8',fontSize:10,interval:'auto'},axisLine:{lineStyle:{color:'#243352'}}},
+    yAxis:{type:'value',axisLabel:{color:'#8a99b8'},splitLine:{lineStyle:{color:'#243352'}}},
+    series:[{
+      name:activeParam,
+      type:'line',
+      data:values,
+      smooth:true,
+      symbol:'none',
+      lineStyle:{width:2,color:COLORS.green},
+      areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(34,197,94,.3)'},{offset:1,color:'rgba(34,197,94,.02)'}])},
+      markArea:{silent:true,data:markAreas}
+    }]
+  }, true);
+}
+
+// ===== Performance bars =====
+function renderPerfBars(faultType){
+  const f = (DATA.faults||{})[faultType];
+  const container = document.getElementById('perfBars');
+  if(!f){container.innerHTML='<p style="color:#8a99b8;font-size:12px">暂无数据</p>';return;}
+  const p = f.perf||{};
+  const items = [
+    {lbl:'阈值检测', key:'threshold_s', color:'#ef4444'},
+    {lbl:'趋势检测', key:'trend_s', color:'#f97316'},
+    {lbl:'波动率检测', key:'volatility_s', color:'#eab308'},
+    {lbl:'关联检测', key:'correlation_s', color:'#a855f7'},
+    {lbl:'综合评分', key:'ensemble_s', color:'#06b6d4'},
+  ];
+  const total = p.detection_s || items.reduce((s,it)=>s+(p[it.key]||0),0);
+  const throughput = p.throughput_records_per_s || 0;
+  const totalHtml = total ? `
+    <div class="perf-item" style="margin-top:4px;padding-top:8px;border-top:1px dashed #243352">
+      <span class="lbl" style="color:#e6edf6;font-weight:600">总检测耗时</span>
+      <span class="bar"><span class="fill" style="width:100%;background:linear-gradient(90deg,#22c55e,#06b6d4)"></span></span>
+      <span class="val" style="color:#22c55e">${total.toFixed(2)} s</span>
+    </div>
+    <div class="perf-item">
+      <span class="lbl" style="color:#e6edf6;font-weight:600">吞吐量</span>
+      <span class="bar" style="visibility:hidden"></span>
+      <span class="val" style="color:#eab308">${throughput} 条/s</span>
+    </div>` : '';
+  container.innerHTML = items.map(it=>{
+    const v = p[it.key];
+    if(v==null) return '';
+    const pct = total ? (v/total*100).toFixed(1) : 0;
+    return `
+      <div class="perf-item">
+        <span class="lbl">${it.lbl}</span>
+        <span class="bar"><span class="fill" style="width:${pct}%;background:${it.color}"></span></span>
+        <span class="val">${v.toFixed(2)} s</span>
+      </div>`;
+  }).join('') + totalHtml;
+}
+
+// ===== Anomaly table =====
+function renderAnomalyTable(){
+  const faults = Object.values(DATA.faults||{});
+  let all = [];
+  faults.forEach(f=>{
+    (f.sample_anomalies||[]).forEach(a=>{
+      all.push({...a, _fault:f.fault_name, _faultType:f.fault_type});
+    });
+  });
+  // 筛选
+  if(filterFault !== 'all'){
+    all = all.filter(a=>a._faultType === filterFault);
+  }
+  if(filterLevel !== 'all'){
+    all = all.filter(a=>a.risk_level === filterLevel);
+  }
+  // 排序
+  all.sort((a,b)=>{
+    let va, vb;
+    switch(sortKey){
+      case 'risk_level':
+        va = LEVEL_ORDER[a.risk_level]??9; vb = LEVEL_ORDER[b.risk_level]??9;
+        return sortAsc ? va-vb : vb-va;
+      case 'score':
+        va = a.score||0; vb = b.score||0;
+        return sortAsc ? va-vb : vb-va;
+      case 'trigger_time':
+        va = a.trigger_time||''; vb = b.trigger_time||'';
+        return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+      case 'confidence':
+        va = a.confidence||0; vb = b.confidence||0;
+        return sortAsc ? va-vb : vb-va;
+      case 'fault_type':
+        va = a._fault||''; vb = b._fault||'';
+        return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+      case 'device':
+        va = a.device_name||a.device_id||''; vb = b.device_name||b.device_id||'';
+        return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+      default:
+        return 0;
+    }
+  });
+  const totalShown = all.length;
+  all = all.slice(0,80);
+  const faultsTotal = Object.values(DATA.faults||{}).reduce((s,f)=>s+(f.anomalies_detected||0),0);
+  document.getElementById('anomalyCount').textContent = `${totalShown} 条匹配 / ${faultsTotal} 条总记录`;
+  const body = document.getElementById('anomalyBody');
+  if(!all.length){body.innerHTML='<tr><td colspan="8" style="text-align:center;color:#8a99b8;padding:30px">暂无匹配的异常事件</td></tr>';return;}
+  body.innerHTML = all.map(a=>{
+    const lv = a.risk_level||'green';
+    return `<tr>
+      <td style="white-space:nowrap">${a.trigger_time||'-'}</td>
+      <td>${a.device_name||a.device_id||'-'}</td>
+      <td>${a._fault||a.fault_type||'-'}</td>
+      <td><span class="lvl lvl-${lv}">${LVL_LABEL[lv]||lv}</span></td>
+      <td>${(a.score||0).toFixed(3)}</td>
+      <td>${((a.confidence||0)*100).toFixed(1)}%</td>
+      <td>${a.detection_method||'-'}</td>
+      <td style="max-width:220px;word-break:break-all">${a.abnormal_params||'-'}</td>
+    </tr>`;
+  }).join('');
+}
+</script>
+</body>
+</html>

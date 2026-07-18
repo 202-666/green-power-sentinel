@@ -1,0 +1,98 @@
+parameters:
+  - name: furnace_temperature
+    unit: "°C"
+    normal_range: [850, 1050]
+    danger_threshold: 1050
+    sampling_rate: "1min"
+    source: "DCS/热电偶"
+
+  - name: flue_gas_temperature
+    unit: "°C"
+    normal_range: [180, 250]
+    danger_threshold: 280
+    sampling_rate: "1min"
+    source: "DCS/热电偶"
+
+  - name: steam_pressure
+    unit: "MPa"
+    normal_range: [3.5, 4.2]
+    danger_low: 3.0
+    danger_high: 4.5
+    sampling_rate: "1min"
+    source: "DCS/压力变送器"
+
+  - name: steam_flow
+    unit: "t/h"
+    normal_range: [40, 65]
+    danger_threshold_low: 30
+    sampling_rate: "1min"
+    source: "DCS/流量计"
+
+  - name: bearing_vibration
+    unit: "mm/s"
+    normal_range: [0, 4.5]
+    warning_threshold: 4.5
+    danger_threshold: 7.1
+    sampling_rate: "1min"
+    source: "DCS/振动传感器"
+
+  - name: bearing_temperature
+    unit: "°C"
+    normal_range: [30, 70]
+    warning_threshold: 70
+    danger_threshold: 85
+    sampling_rate: "1min"
+    source: "DCS/PT100"
+
+  - name: so2_concentration
+    unit: "mg/Nm³"
+    normal_range: [0, 100]
+    standard_limit: 200
+    sampling_rate: "1min"
+    source: "CEMS连续监测系统"
+
+  - name: nox_concentration
+    unit: "mg/Nm³"
+    normal_range: [0, 150]
+    standard_limit: 200
+    sampling_rate: "1min"
+    source: "CEMS连续监测系统"
+
+  - name: grate_speed
+    unit: "%"
+    normal_range: [30, 80]
+    danger_threshold_low: 10
+    danger_threshold_high: 95
+    sampling_rate: "1min"
+    source: "DCS/变频器反馈"
+
+  - name: feed_rate
+    unit: "t/h"
+    normal_range: [8, 15]
+    danger_threshold_low: 5
+    sampling_rate: "1min"
+    source: "DCS/称重传感器"
+
+  - name: oxygen_content
+    unit: "%"
+    normal_range: [6, 12]
+    danger_low: 4
+    danger_high: 15
+    sampling_rate: "1min"
+    source: "DCS/氧化锆分析仪"
+
+  - name: furnace_pressure
+    unit: "Pa"
+    normal_range: [-50, 50]
+    danger_low: -200
+    danger_high: 200
+    sampling_rate: "1min"
+    source: "DCS/微差压变送器"
+
+  - name: cooling_water_temp
+    unit: "°C"
+    normal_range: [25, 45]
+    warning_threshold: 45
+    danger_threshold: 55
+    sampling_rate: "1min"
+    source: "DCS/温度传感器"

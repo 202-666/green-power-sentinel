@@ -1,0 +1,44 @@
+# Python 字节码与缓存
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# 测试与覆盖率
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+
+# pytest 自动生成的标记文件
+CACHEDIR.TAG
+
+# 打包产物
+*.egg-info/
+build/
+dist/
+
+# Demo 产出物（体积过大，不入仓库）
+demo/demo_output/
+
+# 虚拟环境
+.env
+.venv/
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 操作系统
+.DS_Store
+Thumbs.db
+
+# 飞书密钥与本地配置
+*.local.yaml
+feishu_secrets.json

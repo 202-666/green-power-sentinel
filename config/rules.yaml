@@ -1,0 +1,128 @@
+rules:
+  - rule_id: "R1"
+    rule_name: "轴承故障风险"
+    fault_type: "轴承过热"
+    conditions:
+      # 阈值条件：中后期检出
+      - param: "bearing_temperature"
+        direction: "up"
+        compare_to: "threshold"
+        threshold: 65
+      - param: "bearing_vibration"
+        direction: "up"
+        compare_to: "threshold"
+        threshold: 4.5
+      # 趋势条件：早期检出（温度/振动同时上升是轴承故障强信号）
+      - param: "bearing_temperature"
+        direction: "up"
+        compare_to: "trend"
+        trend_window: 30
+        slope_threshold: 0.06
+      - param: "bearing_vibration"
+        direction: "up"
+        compare_to: "trend"
+        trend_window: 30
+        slope_threshold: 0.03
+    logic: "MAJORITY"
+    weight: 0.9
+
+  - rule_id: "R2"
+    rule_name: "燃烧异常导致烟气超标"
+    fault_type: "烟气超标"
+    conditions:
+      # 30min 趋势：中期持续上升
+      # slope_threshold 0.08，覆盖早期 slope≈0.117 的缓慢上升趋势
+      - param: "so2_concentration"
+        direction: "up"
+        compare_to: "trend"
+        trend_window: 30
+        slope_threshold: 0.08
+      - param: "nox_concentration"
+        direction: "up"
+        compare_to: "trend"
+        trend_window: 30
+        slope_threshold: 0.08
+      # 60min 长窗口趋势：早期慢趋势更稳定，std 更小（≈0.055），0.04 阈值更可靠
+      # 用于在故障段首部与 30min trend 联合触发 MAJORITY
+      - param: "so2_concentration"
+        direction: "up"
+        compare_to: "trend"
+        trend_window: 60
+        slope_threshold: 0.04
+      # 预警阈值：中后期检出（正常 mean 51/77，故障 mean 89/103）
+      - param: "so2_concentration"
+        direction: "up"
+        compare_to: "threshold"
+        threshold: 80
+      - param: "nox_concentration"
+        direction: "up"
+        compare_to: "threshold"
+        threshold: 90
+    logic: "MAJORITY"
+    weight: 0.8
+
+  - rule_id: "R3"
+    rule_name: "炉排卡滞风险"
+    fault_type: "炉排卡滞"
+    conditions:
+      # 30min 趋势：早期检出（furnace_pressure 早期 slope 可达 1.13/min）
+      - param: "furnace_pressure"
+        direction: "up"
+        compare_to: "trend"
+        trend_window: 30
+        slope_threshold: 0.2
+      - param: "feed_rate"
+        direction: "down"
+        compare_to: "trend"
+        trend_window: 30
+        slope_threshold: -0.03
+      # 60min 长窗口趋势：furnace_pressure 早期慢上升稳定检出
+      # 用于在故障段首部（pressure<30、feed_rate>9.5）与 30min trend 联合触发 MAJORITY
+      - param: "furnace_pressure"
+        direction: "up"
+        compare_to: "trend"
+        trend_window: 60
+        slope_threshold: 0.1
+      # 阈值条件：中后期检出
+      - param: "furnace_pressure"
+        direction: "up"
+        compare_to: "threshold"
+        threshold: 30
+      - param: "feed_rate"
+        direction: "down"
+        compare_to: "threshold"
+        threshold: 9.5
+    logic: "MAJORITY"
+    weight: 0.85
+
+  - rule_id: "R4"
+    rule_name: "锅炉泄漏风险"
+    fault_type: "锅炉泄漏"
+    conditions:
+      - param: "steam_pressure"
+        direction: "down"
+        compare_to: "trend"
+        trend_window: 10
+        slope_threshold: -0.1
+      - param: "steam_flow"
+        direction: "down"
+        compare_to: "trend"
+        trend_window: 10
+        slope_threshold: -0.5
+    logic: "AND"
+    weight: 0.9
+
+  - rule_id: "R5"
+    rule_name: "联动设备故障"
+    fault_type: "综合故障"
+    conditions:
+      - param: "bearing_vibration"
+        direction: "up"
+        compare_to: "threshold"
+        threshold: 6.0
+      - param: "steam_pressure"
+        direction: "down"
+        compare_to: "threshold"
+        threshold: 3.2
+    logic: "AND"
+    weight: 0.95

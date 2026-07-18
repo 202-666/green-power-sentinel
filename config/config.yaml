@@ -1,0 +1,86 @@
+app:
+  name: "绿电哨兵"
+  version: "1.0.0"
+  mode: "demo"
+
+feishu:
+  app_id: "${FEISHU_APP_ID:-}"
+  app_secret: "${FEISHU_APP_SECRET:-}"
+  app_token: "${FEISHU_APP_TOKEN:-}"
+  tables:
+    runtime_data: "${FEISHU_TABLE_RUNTIME:-}"
+    alert_events: "${FEISHU_TABLE_ALERTS:-}"
+    knowledge_base: "${FEISHU_TABLE_KB:-}"
+    work_orders: "${FEISHU_TABLE_WORKORDERS:-}"
+  alert_bot: "${FEISHU_ALERT_BOT:-}"
+  push:
+    chat_id: "${FEISHU_CHAT_ID:-}"
+    mention_open_ids: "${FEISHU_MENTION_OPEN_IDS:-[]}"
+
+detection:
+  trend_windows: [10, 30, 60]
+  volatility_current_window: 30
+  # 基线窗口：480 分钟 = 8 小时，匹配班组交接周期，提升炉排卡滞等故障灵敏度
+  volatility_baseline_window: 480
+  # 趋势检测动态阈值：启用 normal_baseline 计算 k*std/sqrt(w) 阈值，
+  # 替代 trend_detector 固定 DEFAULT_SLOPE_THRESHOLDS。false=用固定阈值（当前 benchmark 基线）
+  trend_dynamic_threshold: false
+  trend_baseline_window: 480
+  trend_sensitivity_k: 2.0
+  weights:
+    threshold: 0.2
+    trend: 0.3
+    volatility: 0.2
+    correlation: 0.3
+  risk_levels:
+    red: 0.75
+    orange: 0.65
+    yellow: 0.55
+  sensor_qc:
+    stuck_window: 10
+    drift_std_factor: 3.0
+  # primary_cause 映射（从 pipeline.py 硬编码迁出，便于配置化）
+  cause_map:
+    threshold: "参数超限"
+    trend: "趋势异常"
+    volatility: "波动异常"
+    correlation: "多参数关联异常"
+  # 综合评分融合策略
+  ensemble:
+    # 动态权重：根据规则历史匹配率调整 correlation 权重
+    dynamic_weight: true
+    # 单模块触发是否可单独达 yellow（false: 需多模块协同才报警，控制 FP）
+    allow_single_module_alert: false
+    # 持久性确认过滤：过滤瞬时单点抖动，提升报警可靠性
+    persistence_filter: true
+    # 模式：consecutive（严格连续 N 个 yellow+）/ sliding（W 窗口内至少 K 个 yellow+）
+    # sliding 容许间歇性早期信号，提升 Recall 同时仍能过滤孤立噪声
+    persistence_mode: "consecutive"
+    persistence_n: 20                  # consecutive 模式参数（保留备用）
+    persistence_window: 30             # sliding 窗口大小（30 分钟）
+    persistence_min_count: 8           # sliding 窗口内最小 yellow+ 计数
+    # 确认后向回填：故障确认后，前 N 个点内若有弱信号则提升为 yellow
+    # 物理依据：故障发育期弱信号属同一故障；仅回填弱信号点避免误报
+    persistence_backfill: 15
+
+scheduling:
+  agent1_interval_min: 1
+  agent2_interval_min: 5
+  agent3_mode: "realtime"
+  agent4_mode: "on_confirm"
+
+alert_escalation:
+  yellow_auto_escalate: true
+  yellow_consecutive_count: 5
+  yellow_escalate_to: "orange"
+
+doubao:
+  enabled: false
+  api_key: "YOUR_API_KEY"
+  model: "doubao-pro-32k"
+  max_tokens: 2000
+
+data_source:
+  type: "csv"
+  csv_path: "data/sample_data/"
+  batch_size: 100
