@@ -135,7 +135,7 @@ class TestDetectCorrelationSingle(unittest.TestCase):
         self.assertGreater(result[0]["confidence"], 0)
 
     def test_grate_jam_rule_r3(self):
-        """炉排卡滞规则 R3 应被匹配"""
+        """炉排卡滞规则 R3 应被匹配（按 rules.yaml/W8 现行 5 条件 MAJORITY 口径）"""
         rules = load_rules()
         r3 = [r for r in rules if r["rule_id"] == "R3"][0]
 
@@ -144,9 +144,17 @@ class TestDetectCorrelationSingle(unittest.TestCase):
             "feed_rate": 7.0,
             "furnace_pressure": 60,
         }
-        vol_states = {"grate_speed": {"ratio": 3.0, "detected": True}}
+        trend_states = {
+            "furnace_pressure": {
+                "window_30": {"slope": 0.5},
+                "window_60": {"slope": 0.3},
+            },
+            "feed_rate": {
+                "window_30": {"slope": -0.1},
+            },
+        }
 
-        result = detect_correlation(current_values, [r3], volatility_states=vol_states)
+        result = detect_correlation(current_values, [r3], trend_states=trend_states)
         self.assertTrue(result[0]["matched"])
         self.assertEqual(result[0]["fault_type"], "炉排卡滞")
 
