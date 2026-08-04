@@ -7,7 +7,6 @@
 - volatility_detector: 波动率检测
 - correlation_detector: 多参数关联检测（规则引擎）
 - ensemble_scorer: 综合评分与风险分级
-- sensor_qc: 传感器数据质量控制
 """
 
 from .threshold_detector import (
@@ -28,7 +27,6 @@ from .trend_detector import (
 from .volatility_detector import detect_volatility
 from .correlation_detector import detect_correlation
 from .ensemble_scorer import compute_risk_score
-from .sensor_qc import detect_stuck, detect_drift, evaluate_sensor_health
 
 __all__ = [
     "detect_threshold",
@@ -45,7 +43,4 @@ __all__ = [
     "detect_volatility",
     "detect_correlation",
     "compute_risk_score",
-    "detect_stuck",
-    "detect_drift",
-    "evaluate_sensor_health",
 ]

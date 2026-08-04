@@ -10,19 +10,16 @@
 3. 根据评分映射风险等级
 4. 置信度基于证据一致性（多个模块同时触发则置信度高）
 
-性能优化：
-- 使用 Numba JIT 加速预提取循环（29s → < 1s）
+性能说明：
+- 加权求和、等级映射、置信度计算已用 NumPy 向量化；
+- 逐点预提取（分数组装）仍为 Python 循环，是当前主要耗时项
+  （W7 性能报告实测：43200 点全量综合评分约 29s）；
+- 未启用 Numba JIT（该加速仅为 W7 报告的后续优化建议）。
 
 验收标准：3类故障全部检出，误报<5次/30天
 """
 
 import logging
-
-try:
-    from numba import jit
-    NUMBA_AVAILABLE = True
-except ImportError:
-    NUMBA_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -62,15 +59,14 @@ def _score_threshold(threshold_result: list) -> tuple:
 
 
 def _score_trend(trend_result: dict) -> tuple:
-    """趋势检测结果 → [0,1] 分数"""
+    """趋势检测结果 → (分数, 等级)"""
     if not trend_result or not trend_result.get("any_detected"):
-        return 0.0, None, []
+        return 0.0, None
 
     level_scores = {"red": 1.0, "orange": 0.65, "yellow": 0.35}
     max_level = trend_result.get("max_level")
     score = level_scores.get(max_level, 0.0)
 
-    param = trend_result.get("param", "unknown")
     # 多个窗口触发加分
     triggered_windows = sum(
         1
@@ -79,13 +75,13 @@ def _score_trend(trend_result: dict) -> tuple:
     )
     score = min(1.0, score + triggered_windows * 0.05)
 
-    return score, max_level, [param]
+    return score, max_level
 
 
 def _score_volatility(volatility_result: dict) -> tuple:
-    """波动率检测结果 → [0,1] 分数"""
+    """波动率检测结果 → (分数, 等级)"""
     if not volatility_result or not volatility_result.get("detected"):
-        return 0.0, None, []
+        return 0.0, None
 
     level_scores = {"red": 1.0, "orange": 0.65, "yellow": 0.35}
     level = volatility_result.get("level")
@@ -94,8 +90,7 @@ def _score_volatility(volatility_result: dict) -> tuple:
     ratio = volatility_result.get("ratio", 1.0)
     score = min(1.0, score + (ratio - 1.0) * 0.08)
 
-    param = volatility_result.get("param", "unknown")
-    return score, level, [param]
+    return score, level
 
 
 def _score_correlation(correlation_result: list) -> tuple:
@@ -175,19 +170,19 @@ def compute_risk_score(
 
     tr_score, tr_level, tr_params = 0.0, None, []
     for param, res in trend_result.items():
-        s, l, p = _score_trend(res)
+        s, l = _score_trend(res)
         if s > tr_score:
             tr_score = s
             tr_level = l
-            tr_params = p
+            tr_params = [param]
 
     vol_score, vol_level, vol_params = 0.0, None, []
     for param, res in volatility_result.items():
-        s, l, p = _score_volatility(res)
+        s, l = _score_volatility(res)
         if s > vol_score:
             vol_score = s
             vol_level = l
-            vol_params = p
+            vol_params = [param]
 
     corr_score, corr_level, corr_faults, corr_rule = _score_correlation(
         correlation_result
