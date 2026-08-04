@@ -15,6 +15,9 @@ from .auth import FeishuAuth
 
 logger = logging.getLogger(__name__)
 
+# L4：所有飞书 API 请求统一超时，避免上游挂起卡死流水线
+REQUEST_TIMEOUT = 10
+
 
 # 风险等级英文 → 中文（多维表格「预警事件」表 risk_level 单选字段值）
 RISK_LEVEL_CN = {"red": "红", "orange": "橙", "yellow": "黄"}
@@ -111,7 +114,9 @@ class BitableClient:
             params["page_token"] = page_token
 
         try:
-            resp = requests.get(url, headers=self._get_headers(), params=params)
+            resp = requests.get(
+                url, headers=self._get_headers(), params=params, timeout=REQUEST_TIMEOUT
+            )
             resp.raise_for_status()
             return resp.json()
         except Exception as e:
@@ -132,7 +137,9 @@ class BitableClient:
         payload = {"records": records}
 
         try:
-            resp = requests.post(url, headers=self._get_headers(), json=payload)
+            resp = requests.post(
+                url, headers=self._get_headers(), json=payload, timeout=REQUEST_TIMEOUT
+            )
             resp.raise_for_status()
             return resp.json()
         except Exception as e:
@@ -154,7 +161,9 @@ class BitableClient:
         payload = {"fields": fields}
 
         try:
-            resp = requests.put(url, headers=self._get_headers(), json=payload)
+            resp = requests.put(
+                url, headers=self._get_headers(), json=payload, timeout=REQUEST_TIMEOUT
+            )
             resp.raise_for_status()
             return resp.json()
         except Exception as e:
@@ -173,7 +182,7 @@ class BitableClient:
         url = f"{self.base_url}/apps/{self.app_token}/tables/{table_id}/fields"
 
         try:
-            resp = requests.get(url, headers=self._get_headers())
+            resp = requests.get(url, headers=self._get_headers(), timeout=REQUEST_TIMEOUT)
             resp.raise_for_status()
             return resp.json()
         except Exception as e:
@@ -334,8 +343,11 @@ class BitableClient:
         return cases
 
     @staticmethod
-    def _fields_to_case(fields: dict) -> dict:
-        """将多维表格字段（含单选/多选对象）展平为知识库案例字典"""
+    def flatten_fields(fields: dict) -> dict:
+        """
+        将多维表格字段值展平：单选/多选等对象（{"text": ...} / [{"text": ...}]）
+        转为纯文本，数值与字符串原样保留。用于把多维表格记录转换为 pandas 可用字典。
+        """
         def _flat(v):
             # 飞书单选/多选字段返回 {"text": "..."} 或 [{"text": "..."}]
             if isinstance(v, dict):
@@ -343,7 +355,13 @@ class BitableClient:
             if isinstance(v, list):
                 return ", ".join(_flat(x) for x in v if x)
             return v
+
         return {k: _flat(v) for k, v in fields.items()}
+
+    @staticmethod
+    def _fields_to_case(fields: dict) -> dict:
+        """将多维表格字段（含单选/多选对象）展平为知识库案例字典"""
+        return BitableClient.flatten_fields(fields)
 
     # ====================================================================
     # 「工单」表高层封装（Agent 4 使用）

@@ -22,7 +22,7 @@ class SentinelPipeline:
         self._detection_scores = None
         self._detection_df = None
         self._last_anomalies = []
-        self._yellow_tracker = {}
+        self._yellow_tracker = self._load_yellow_tracker()
         self._init_modules()
         logger.info(f"SentinelPipeline initialized, mode={self.config.get('app', {}).get('mode', 'unknown')}")
 
@@ -59,6 +59,46 @@ class SentinelPipeline:
                 return value
 
         return _resolve(obj)
+
+    def _yellow_tracker_path(self) -> str:
+        """黄色升级计数器的持久化路径（L7：进程重启不清零）。
+
+        路径固定于 demo/demo_output/state/（该目录已被 .gitignore 排除，
+        不会把运行时状态混入仓库）。
+        """
+        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        return os.path.join(base, "demo", "demo_output", "state", "yellow_tracker.json")
+
+    def _load_yellow_tracker(self) -> dict:
+        """启动时从本地 JSON 加载黄色升级计数器。"""
+        import json
+
+        path = self._yellow_tracker_path()
+        try:
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, dict):
+                    return {
+                        str(k): int(v)
+                        for k, v in data.items()
+                        if isinstance(v, (int, float)) and not isinstance(v, bool)
+                    }
+        except Exception as e:
+            logger.warning(f"黄色升级计数器加载失败，使用空状态: {e}")
+        return {}
+
+    def _save_yellow_tracker(self) -> None:
+        """将黄色升级计数器持久化到本地 JSON（失败仅告警，不阻断流水线）。"""
+        import json
+
+        try:
+            path = self._yellow_tracker_path()
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(self._yellow_tracker, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.warning(f"黄色升级计数器持久化失败: {e}")
 
     def _init_modules(self):
         """初始化各Agent模块"""
@@ -111,25 +151,29 @@ class SentinelPipeline:
         import pandas as pd
         logger.info(f"Agent 1: Starting data collection from {data_source}")
 
-        if not os.path.exists(data_source):
-            ds_cfg = self.config.get("data_source", {})
-            if ds_cfg.get("type") == "csv":
-                csv_dir = ds_cfg.get("csv_path", "data/sample_data")
-                if not os.path.isabs(csv_dir):
-                    base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                    csv_dir = os.path.join(base, csv_dir)
-                alt_path = os.path.join(csv_dir, os.path.basename(data_source))
-                if os.path.exists(alt_path):
-                    data_source = alt_path
-                else:
-                    alt_path2 = os.path.join(csv_dir, data_source)
-                    if os.path.exists(alt_path2):
-                        data_source = alt_path2
+        ds_cfg = self.config.get("data_source", {}) or {}
+        if data_source == "bitable" or ds_cfg.get("type") == "bitable":
+            # H1：在线模式走飞书多维表格「运行数据」表（字段映射见 data/bitable_schema.sql）
+            raw_df = self._collect_from_bitable()
+        else:
+            if not os.path.exists(data_source):
+                if ds_cfg.get("type") == "csv":
+                    csv_dir = ds_cfg.get("csv_path", "data/sample_data")
+                    if not os.path.isabs(csv_dir):
+                        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                        csv_dir = os.path.join(base, csv_dir)
+                    alt_path = os.path.join(csv_dir, os.path.basename(data_source))
+                    if os.path.exists(alt_path):
+                        data_source = alt_path
+                    else:
+                        alt_path2 = os.path.join(csv_dir, data_source)
+                        if os.path.exists(alt_path2):
+                            data_source = alt_path2
 
-        if not os.path.exists(data_source):
-            raise FileNotFoundError(f"Data source not found: {data_source}")
+            if not os.path.exists(data_source):
+                raise FileNotFoundError(f"Data source not found: {data_source}")
 
-        raw_df = pd.read_csv(data_source, low_memory=False)
+            raw_df = pd.read_csv(data_source, low_memory=False)
         logger.info(f"Raw data loaded: {len(raw_df)} rows from {data_source}")
 
         cleaned_df = self._clean_data_func(raw_df)
@@ -137,6 +181,84 @@ class SentinelPipeline:
         self._data_source_path = data_source
         logger.info(f"Data cleaned: {len(cleaned_df)} rows remaining")
         return len(cleaned_df)
+
+    def _collect_from_bitable(self):
+        """H1：从飞书多维表格「运行数据」表拉取原始数据（在线模式）。
+
+        字段映射以 data/bitable_schema.sql 为准（timestamp + 13 参数列 + 设备元数据），
+        不臆造字段名。多维表格返回值中的单选/多选对象（{text/name} 包装）统一展平；
+        日期字段（毫秒时间戳）转为与 CSV 一致的 'YYYY-MM-DD HH:MM:SS' 字符串。
+        """
+        import pandas as pd
+        from feishu.bitable_client import BitableClient
+
+        feishu_cfg = self.config.get("feishu", {}) or {}
+        tables = feishu_cfg.get("tables", {}) or {}
+        app_id = str(feishu_cfg.get("app_id", "") or "")
+        app_secret = str(feishu_cfg.get("app_secret", "") or "")
+        app_token = str(feishu_cfg.get("app_token", "") or "")
+        runtime_table = str(tables.get("runtime_data", "") or "")
+
+        missing = [
+            name
+            for name, val in [
+                ("FEISHU_APP_ID", app_id),
+                ("FEISHU_APP_SECRET", app_secret),
+                ("FEISHU_APP_TOKEN", app_token),
+                ("FEISHU_TABLE_RUNTIME", runtime_table),
+            ]
+            if not val
+        ]
+        if missing:
+            raise RuntimeError(
+                "Bitable 在线采集缺少必要配置: "
+                + ", ".join(missing)
+                + "（请在环境变量中配置后重试）"
+            )
+
+        client = BitableClient(app_id, app_secret, app_token)
+        records = []
+        page_token = None
+        while True:
+            resp = client.get_records(
+                runtime_table, page_token=page_token, page_size=500
+            )
+            if resp.get("code") != 0:
+                raise RuntimeError(f"Bitable 读取运行数据失败: {resp.get('msg')}")
+            data = resp.get("data", {}) or {}
+            items = data.get("items", []) or []
+            records.extend(items)
+            page_token = data.get("page_token")
+            if not data.get("has_more") or not page_token:
+                break
+
+        if not records:
+            logger.warning("Bitable 运行数据表为空，返回空 DataFrame")
+            return pd.DataFrame()
+
+        rows = [
+            self._bitable_fields_to_runtime(rec.get("fields", {}) or {})
+            for rec in records
+        ]
+        raw_df = pd.DataFrame(rows)
+        logger.info(f"Bitable 数据加载完成: {len(raw_df)} 行 (table={runtime_table})")
+        return raw_df
+
+    @staticmethod
+    def _bitable_fields_to_runtime(fields: dict) -> dict:
+        """展平多维表格「运行数据」行字段为 pipeline 可用字典。"""
+        import datetime
+
+        from feishu.bitable_client import BitableClient
+
+        flat = BitableClient.flatten_fields(fields)
+        # 飞书日期字段返回毫秒时间戳，转为与 CSV 相同的字符串格式（本机时区）
+        ts = flat.get("timestamp")
+        if isinstance(ts, (int, float)) and not isinstance(ts, bool):
+            flat["timestamp"] = datetime.datetime.fromtimestamp(
+                ts / 1000.0
+            ).strftime("%Y-%m-%d %H:%M:%S")
+        return flat
 
     def run_anomaly_detection(self, device_id: str) -> list:
         """
@@ -426,6 +548,7 @@ class SentinelPipeline:
 
                 current_count = self._yellow_tracker.get(key, 0) + 1
                 self._yellow_tracker[key] = current_count
+                self._save_yellow_tracker()
                 max_count = escalation_cfg.get("yellow_consecutive_count", 5)
 
                 if current_count >= max_count:
@@ -436,6 +559,7 @@ class SentinelPipeline:
                     level = escalate_to
                     logger.info(f"黄色预警自动升级: {key} count={current_count} -> {escalate_to}")
                     self._yellow_tracker[key] = 0
+                    self._save_yellow_tracker()
                 else:
                     logger.info(f"黄色预警累计: {key} count={current_count}/{max_count}")
                     return False
@@ -449,6 +573,7 @@ class SentinelPipeline:
             fault_type = alert.get("fault_type", "")
             key = f"{device_id}_{fault_type}"
             self._yellow_tracker.pop(key, None)
+            self._save_yellow_tracker()
 
         # 离线模式或未配置 chat_id：卡片写入本地
         if app_mode == "demo" or not chat_id:
@@ -470,7 +595,7 @@ class SentinelPipeline:
         """
         import json
         import datetime
-        from feishu.message_sender import MessageSender
+        from feishu.message_sender import MessageSender, parse_open_ids
 
         # 离线模式下 MessageSender 不需要真实凭据，仅用其卡片生成能力
         sender = MessageSender.__new__(MessageSender)
@@ -525,7 +650,7 @@ class SentinelPipeline:
         tables = feishu_cfg.get("tables", {}) or {}
         alert_table_id = tables.get("alert_events", "")
         chat_id = push_cfg.get("chat_id", "")
-        mention_open_ids = push_cfg.get("mention_open_ids", []) or []
+        mention_open_ids = parse_open_ids(push_cfg.get("mention_open_ids"))
 
         if not (app_id and app_secret and app_token and alert_table_id and chat_id):
             logger.error("在线推送缺少必要配置，降级为离线模式")
@@ -695,31 +820,50 @@ class SentinelPipeline:
         param_columns = [c for c in PARAM_COLUMNS if c in detect_df.columns]
         n_detect = len(detect_df)
 
-        # 阈值检测
-        threshold_hits = self._detect_threshold_batch_func(
-            detect_df, self._thresholds, param_columns
-        )
+        # 阈值检测 - 带异常恢复（与全量检测一致，单模块失败不中断增量流程）
+        try:
+            threshold_hits = self._detect_threshold_batch_func(
+                detect_df, self._thresholds, param_columns
+            )
+        except Exception as e:
+            logger.error(f"增量检测·阈值模块失败，跳过该模块: {e}")
+            threshold_hits = []
         th_per_time = [[] for _ in range(n_detect)]
         for hit in threshold_hits:
             ri = hit.get("row_idx", 0)
             if isinstance(ri, (int, np.integer)) and 0 <= ri < n_detect:
                 th_per_time[ri].append(hit)
 
-        # 趋势/波动率/关联检测（含上下文，保证窗口完整）
-        trend_multi = self._detect_trend_multi_func(
-            detect_df, param_columns, thresholds=self._trend_thresholds
-        )
+        # 趋势/波动率/关联检测（含上下文，保证窗口完整）- 带异常恢复
+        trend_multi = {}
+        try:
+            trend_multi = self._detect_trend_multi_func(
+                detect_df, param_columns, thresholds=self._trend_thresholds
+            )
+        except Exception as e:
+            logger.error(f"增量检测·趋势模块失败，跳过该模块: {e}")
+
         vol_current = detection_cfg.get("volatility_current_window", 30)
-        vol_multi = detect_volatility_multi_params(
-            detect_df, param_columns,
-            current_window=vol_current, baseline_window=vol_baseline,
-        )
-        rules = []
-        rules_path = os.path.join(os.path.dirname(self.config_path), "rules.yaml")
-        if os.path.exists(rules_path):
-            with open(rules_path, "r", encoding="utf-8") as f:
-                rules = yaml.safe_load(f).get("rules", [])
-        corr_batch = detect_correlation_batch(detect_df, rules, trend_multi, vol_multi)
+        vol_multi = {}
+        try:
+            vol_multi = detect_volatility_multi_params(
+                detect_df, param_columns,
+                current_window=vol_current, baseline_window=vol_baseline,
+            )
+        except Exception as e:
+            logger.error(f"增量检测·波动率模块失败，跳过该模块: {e}")
+
+        corr_batch = []
+        try:
+            rules = []
+            rules_path = os.path.join(os.path.dirname(self.config_path), "rules.yaml")
+            if os.path.exists(rules_path):
+                with open(rules_path, "r", encoding="utf-8") as f:
+                    rules = yaml.safe_load(f).get("rules", [])
+            corr_batch = detect_correlation_batch(detect_df, rules, trend_multi, vol_multi)
+        except Exception as e:
+            logger.error(f"增量检测·关联模块失败，跳过该模块: {e}")
+            corr_batch = [{"matched_rules": []} for _ in range(n_detect)]
 
         # 构造 per-time 状态
         tr_per_time, vol_per_time, corr_per_time = [], [], []
@@ -752,22 +896,26 @@ class SentinelPipeline:
             vol_per_time.append(vdict)
             corr_per_time.append(corr_batch[i]["matched_rules"] if i < len(corr_batch) else [])
 
-        # 综合评分（全区间，含上下文，保证持久性过滤正确）
-        ens_cfg = detection_cfg.get("ensemble", {}) or {}
-        all_scores = compute_risk_score_batch(
-            th_per_time, tr_per_time, vol_per_time, corr_per_time,
-            weights=detection_cfg.get("weights"),
-            risk_levels=detection_cfg.get("risk_levels"),
-            allow_single_module_alert=ens_cfg.get("allow_single_module_alert", False),
-            single_module_threshold=float(ens_cfg.get("single_module_threshold", 0.8)),
-            single_module_score_ratio=float(ens_cfg.get("single_module_score_ratio", 0.5)),
-            persistence_filter=ens_cfg.get("persistence_filter", False),
-            persistence_n=int(ens_cfg.get("persistence_n", 3)),
-            persistence_mode=str(ens_cfg.get("persistence_mode", "consecutive")),
-            persistence_window=int(ens_cfg.get("persistence_window", 30)),
-            persistence_min_count=int(ens_cfg.get("persistence_min_count", 8)),
-            persistence_backfill=int(ens_cfg.get("persistence_backfill", 0)),
-        )
+        # 综合评分（全区间，含上下文，保证持久性过滤正确）- 带异常恢复
+        all_scores = []
+        try:
+            ens_cfg = detection_cfg.get("ensemble", {}) or {}
+            all_scores = compute_risk_score_batch(
+                th_per_time, tr_per_time, vol_per_time, corr_per_time,
+                weights=detection_cfg.get("weights"),
+                risk_levels=detection_cfg.get("risk_levels"),
+                allow_single_module_alert=ens_cfg.get("allow_single_module_alert", False),
+                single_module_threshold=float(ens_cfg.get("single_module_threshold", 0.8)),
+                single_module_score_ratio=float(ens_cfg.get("single_module_score_ratio", 0.5)),
+                persistence_filter=ens_cfg.get("persistence_filter", False),
+                persistence_n=int(ens_cfg.get("persistence_n", 3)),
+                persistence_mode=str(ens_cfg.get("persistence_mode", "consecutive")),
+                persistence_window=int(ens_cfg.get("persistence_window", 30)),
+                persistence_min_count=int(ens_cfg.get("persistence_min_count", 8)),
+                persistence_backfill=int(ens_cfg.get("persistence_backfill", 0)),
+            )
+        except Exception as e:
+            logger.error(f"增量检测·综合评分失败，返回空结果: {e}")
 
         # 仅提取新增行对应的评分与异常
         new_scores = all_scores[new_start:]

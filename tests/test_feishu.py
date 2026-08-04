@@ -30,7 +30,15 @@ from feishu.message_sender import (
     MessageSender,
     RISK_CARD_TEMPLATE,
     INSTANT_PUSH_LEVELS,
+    parse_open_ids,
 )
+
+
+def _clear_state_dir():
+    """清理黄色升级计数器持久化目录，保证测试可重复运行（L7）"""
+    state_dir = os.path.join(PROJECT_ROOT, "demo", "demo_output", "state")
+    if os.path.exists(state_dir):
+        shutil.rmtree(state_dir)
 
 
 def _make_alert(risk_level="red", **overrides):
@@ -53,6 +61,37 @@ def _make_alert(risk_level="red", **overrides):
     }
     alert.update(overrides)
     return alert
+
+
+# ============================================================
+# 0. M1：mention_open_ids 解析
+# ============================================================
+
+class TestParseOpenIds(unittest.TestCase):
+    """FEISHU_MENTION_OPEN_IDS 配置值 → open_id 列表"""
+
+    def test_none_and_empty(self):
+        self.assertEqual(parse_open_ids(None), [])
+        self.assertEqual(parse_open_ids(""), [])
+        self.assertEqual(parse_open_ids("   "), [])
+
+    def test_json_array_string(self):
+        self.assertEqual(parse_open_ids('["ou_1","ou_2"]'), ["ou_1", "ou_2"])
+
+    def test_json_empty_array(self):
+        self.assertEqual(parse_open_ids("[]"), [])
+
+    def test_comma_separated(self):
+        self.assertEqual(parse_open_ids("ou_1, ou_2"), ["ou_1", "ou_2"])
+
+    def test_list_input(self):
+        self.assertEqual(parse_open_ids(["ou_1", "ou_2"]), ["ou_1", "ou_2"])
+
+    def test_brackets_not_treated_as_ids(self):
+        """M1 回归：解析前默认值是字符串 "[]"，不应把 "[", "]" 当 open_id"""
+        result = parse_open_ids("[]")
+        self.assertNotIn("[", result)
+        self.assertNotIn("]", result)
 
 
 # ============================================================
@@ -261,10 +300,12 @@ class TestPipelineAlertPushOffline(unittest.TestCase):
         # 每个测试前清空 alert_cards 目录，避免历史文件干扰
         if os.path.exists(self.alert_cards_dir):
             shutil.rmtree(self.alert_cards_dir)
+        _clear_state_dir()
 
     def tearDown(self):
         if os.path.exists(self.alert_cards_dir):
             shutil.rmtree(self.alert_cards_dir)
+        _clear_state_dir()
 
     def test_offline_push_saves_card_json(self):
         """离线模式应将卡片 JSON 保存到 demo_output/alert_cards/"""
@@ -316,10 +357,12 @@ class TestFullPipelineWithPush(unittest.TestCase):
     def setUp(self):
         if os.path.exists(self.alert_cards_dir):
             shutil.rmtree(self.alert_cards_dir)
+        _clear_state_dir()
 
     def tearDown(self):
         if os.path.exists(self.alert_cards_dir):
             shutil.rmtree(self.alert_cards_dir)
+        _clear_state_dir()
 
     def test_bearing_overheat_pipeline_pushes_alerts(self):
         """轴承过热故障应触发预警推送，生成至少1张本地卡片"""
@@ -415,6 +458,60 @@ class TestBitableClientOnline(unittest.TestCase):
         result = client.append_alert_events("tblAlerts", [])
         self.assertEqual(result["code"], 0)
         self.assertEqual(result["data"]["record_ids"], [])
+
+    @patch("feishu.bitable_client.requests.get")
+    def test_get_records_sends_timeout(self, mock_get):
+        """L4：读取记录请求必须携带 timeout，避免 API 挂起卡死流水线"""
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.json.return_value = {"code": 0, "data": {"items": [], "has_more": False}}
+        mock_get.return_value = mock_resp
+
+        client = self._make_client()
+        result = client.get_records("tblRuntime")
+        self.assertEqual(result["code"], 0)
+        self.assertIn("timeout", mock_get.call_args[1])
+        self.assertGreater(mock_get.call_args[1]["timeout"], 0)
+
+
+# ============================================================
+# 7. L4：feishu 请求 timeout + token 重试
+# ============================================================
+
+class TestFeishuRequestTimeout(unittest.TestCase):
+    """所有飞书 requests 调用都应携带 timeout"""
+
+    @patch("feishu.auth.requests.post")
+    def test_token_request_has_timeout(self, mock_post):
+        from feishu.auth import FeishuAuth
+
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.json.return_value = {"code": 0, "tenant_access_token": "t-1", "expire": 7200}
+        mock_post.return_value = mock_resp
+
+        auth = FeishuAuth("app_x", "secret")
+        token = auth.get_tenant_access_token()
+        self.assertEqual(token, "t-1")
+        self.assertIn("timeout", mock_post.call_args[1])
+        self.assertGreater(mock_post.call_args[1]["timeout"], 0)
+
+    @patch("feishu.message_sender.requests.post")
+    def test_send_card_message_has_timeout(self, mock_post):
+        sender = MessageSender.__new__(MessageSender)
+        sender.base_url = "https://open.feishu.cn/open-apis/im/v1"
+        sender.receive_id_type = "chat_id"
+        sender._get_headers = MagicMock(
+            return_value={"Authorization": "Bearer t", "Content-Type": "application/json"}
+        )
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.json.return_value = {"code": 0}
+        mock_post.return_value = mock_resp
+
+        result = sender.send_card_message("chat_xxx", {"config": {}})
+        self.assertEqual(result["code"], 0)
+        self.assertIn("timeout", mock_post.call_args[1])
 
 
 if __name__ == "__main__":

@@ -15,7 +15,8 @@ feishu:
   alert_bot: "${FEISHU_ALERT_BOT:-}"
   push:
     chat_id: "${FEISHU_CHAT_ID:-}"
-    mention_open_ids: "${FEISHU_MENTION_OPEN_IDS:-[]}"
+    # M1：默认空，代码按逗号分隔 / JSON 数组解析，避免把 "[", "]" 当 open_id
+    mention_open_ids: "${FEISHU_MENTION_OPEN_IDS:-}"
 
 detection:
   trend_windows: [10, 30, 60]
@@ -83,4 +84,6 @@ doubao:
 data_source:
   type: "csv"
   csv_path: "data/sample_data/"
+  # M4：最小调度器默认采集/检测设备（不写死在代码中）
+  device_id: "INC-01-BRG-01"
   batch_size: 100

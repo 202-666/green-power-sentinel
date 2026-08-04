@@ -18,6 +18,9 @@ from .auth import FeishuAuth
 
 logger = logging.getLogger(__name__)
 
+# L4：所有飞书 API 请求统一超时，避免上游挂起卡死流水线
+REQUEST_TIMEOUT = 10
+
 
 # 风险等级 → 飞书卡片 header template（颜色）
 # 飞书官方支持：red / orange / yellow / green / blue / turquoise / purple / grey
@@ -31,6 +34,36 @@ RISK_LABEL_CN = {"red": "红色", "orange": "橙色", "yellow": "黄色"}
 
 # 风险等级 → 是否即时推送
 INSTANT_PUSH_LEVELS = {"red", "orange"}
+
+
+def parse_open_ids(value) -> list:
+    """
+    将 FEISHU_MENTION_OPEN_IDS 配置值解析为 open_id 列表（M1 修复）。
+
+    兼容三种形态：
+    - 列表（YAML 原生列表或 env 中 JSON 数组）→ 直接使用
+    - JSON 数组字符串（如 '["ou_1","ou_2"]'）→ json.loads 解析
+    - 逗号分隔字符串（如 'ou_1,ou_2'）→ 按逗号拆分
+
+    空值 / 空字符串 → []。解析失败时按逗号拆分兜底，杜绝把 "[", "]" 当 open_id。
+    """
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(v).strip() for v in value if str(v).strip()]
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return []
+        if s.startswith("[") and s.endswith("]"):
+            try:
+                parsed = json.loads(s)
+                if isinstance(parsed, list):
+                    return [str(v).strip() for v in parsed if str(v).strip()]
+            except (ValueError, TypeError):
+                pass
+        return [v.strip() for v in s.split(",") if v.strip()]
+    return []
 
 
 class MessageSender:
@@ -78,7 +111,13 @@ class MessageSender:
         }
 
         try:
-            resp = requests.post(url, headers=self._get_headers(), params=params, json=payload)
+            resp = requests.post(
+                url,
+                headers=self._get_headers(),
+                params=params,
+                json=payload,
+                timeout=REQUEST_TIMEOUT,
+            )
             resp.raise_for_status()
             return resp.json()
         except Exception as e:
@@ -105,7 +144,13 @@ class MessageSender:
         }
 
         try:
-            resp = requests.post(url, headers=self._get_headers(), params=params, json=payload)
+            resp = requests.post(
+                url,
+                headers=self._get_headers(),
+                params=params,
+                json=payload,
+                timeout=REQUEST_TIMEOUT,
+            )
             resp.raise_for_status()
             return resp.json()
         except Exception as e:
@@ -285,6 +330,7 @@ class MessageSender:
             - code=-1：推送失败
         """
         level = str(alert.get("risk_level", "yellow")).lower()
+        mention_open_ids = parse_open_ids(mention_open_ids)
 
         if level not in INSTANT_PUSH_LEVELS:
             logger.info(

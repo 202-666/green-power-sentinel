@@ -44,6 +44,19 @@ class TestDataCleanerBasic(unittest.TestCase):
         # 保留最后一条（960.0）
         self.assertEqual(cleaned["furnace_temperature"].iloc[0], 960.0)
 
+    def test_dedup_after_sort_keeps_latest_actual_time(self):
+        """L6：去重前先按时间排序，同一（取整后）分钟保留实际时间最新的一条"""
+        data = {
+            "timestamp": ["2026-07-01 10:00:00", "2026-07-01 10:01:00", "2026-07-01 10:00:59"],
+            "furnace_temperature": [950.0, 960.0, 955.0],
+        }
+        df = pd.DataFrame(data)
+        cleaned = clean_data(df)
+        self.assertEqual(len(cleaned), 2)
+        # 10:00:59 与 10:01:00 都取整到 10:01，应保留实际时间更晚的 10:01:00（960.0）
+        row_1001 = cleaned[cleaned["timestamp"] == pd.Timestamp("2026-07-01 10:01:00")]
+        self.assertEqual(row_1001["furnace_temperature"].iloc[0], 960.0)
+
     def test_time_alignment(self):
         """时间戳对齐到整分钟"""
         data = {

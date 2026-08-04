@@ -59,8 +59,11 @@ def main():
         data_path = args.data if os.path.isabs(args.data) else os.path.join(project_root, args.data)
         result = pipeline.run_full_pipeline(data_path, args.device)
     else:
-        # 在线模式：连接飞书多维表格
-        print("在线模式需要配置飞书API凭据")
+        # 在线模式：从飞书多维表格「运行数据」表拉取（H1 修复）
+        # 未配置 FEISHU_APP_ID / FEISHU_APP_SECRET / FEISHU_APP_TOKEN /
+        # FEISHU_TABLE_RUNTIME 时，pipeline 返回失败报告并给出明确提示，
+        # 不再走 CSV 分支抛 FileNotFoundError。
+        print("在线模式：从飞书多维表格读取运行数据（需配置飞书API凭据）")
         result = pipeline.run_full_pipeline("bitable", args.device)
 
     print(f"\n{'='*60}")
