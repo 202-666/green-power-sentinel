@@ -61,7 +61,7 @@
 ```bash
 pip install -r requirements.txt
 
-# 运行 25 个单元测试
+# 运行 132 个单元测试
 python -m pytest tests/ -v
 
 # 运行 Demo 生成预警卡片与运维建议
@@ -98,7 +98,7 @@ green-power-sentinel/
 | `docs/` | W7 性能报告（Recall/F1 验收）+ W8 技术文档（架构/数据流/模块说明） |
 | `feishu/` | 飞书 OpenAPI 封装：OAuth 认证、多维表格读写、消息卡片推送 |
 | `models/` | 阈值/趋势/波动/关联 四检测器 + 综合评分器（向量化实现） |
-| `tests/` | 25 个单元测试全部 PASS + W7 基准复现脚本 |
+| `tests/` | 132 个单元测试（基线 e1cbc42 复跑：130 通过 / 2 失败，见 FEI-7）+ W7 基准复现脚本 |
 
 ## 技术栈
 
