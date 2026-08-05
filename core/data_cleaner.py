@@ -83,17 +83,18 @@ def clean_data(raw_df: pd.DataFrame, param_defs: list = None) -> pd.DataFrame:
     if len(df) < n_before:
         logger.warning(f"clean_data: 丢弃 {n_before - len(df)} 条 timestamp 无效的记录")
 
-    # 1. 时间对齐：四舍五入到整分钟（避免 30 秒漂移）
+    # 1. 按原始时间排序（L6：去重语义不依赖输入顺序，
+    #    同一取整分钟内的重复记录按实际时间取最后一条）
+    df = df.sort_values("timestamp").reset_index(drop=True)
+
+    # 2. 时间对齐：四舍五入到整分钟（避免 30 秒漂移）
     df["timestamp"] = df["timestamp"].dt.round("1min")
 
-    # 2. 去重：同一 timestamp 保留最后一条
+    # 3. 去重：同一 timestamp 保留最后一条（排序在取整前，keep="last" 按实际时间生效）
     n_before = len(df)
     df = df.drop_duplicates(subset=["timestamp"], keep="last").reset_index(drop=True)
     if len(df) < n_before:
         logger.info(f"clean_data: 去重 {n_before - len(df)} 条重复记录")
-
-    # 3. 按时间排序
-    df = df.sort_values("timestamp").reset_index(drop=True)
 
     # 3.5 严重缺失处理：超过50%参数缺失的记录跳过（写入日志）
     # 仅统计 PARAM_COLUMNS 中存在的列

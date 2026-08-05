@@ -1,6 +1,11 @@
 import requests
 import time
 
+# L4：飞书鉴权请求超时（秒），并允许一次重试
+REQUEST_TIMEOUT = 10
+MAX_ATTEMPTS = 2
+
+
 class FeishuAuth:
     def __init__(self, app_id: str, app_secret: str):
         self.app_id = app_id
@@ -18,15 +23,19 @@ class FeishuAuth:
             "app_secret": self.app_secret
         }
         
-        try:
-            resp = requests.post(url, json=payload)
-            resp.raise_for_status()
-            data = resp.json()
-            if data.get("code") == 0:
-                self.token = data["tenant_access_token"]
-                self.token_expire_time = time.time() + data.get("expire", 7200) - 60
-                return self.token
-            else:
+        last_err = None
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            try:
+                resp = requests.post(url, json=payload, timeout=REQUEST_TIMEOUT)
+                resp.raise_for_status()
+                data = resp.json()
+                if data.get("code") == 0:
+                    self.token = data["tenant_access_token"]
+                    self.token_expire_time = time.time() + data.get("expire", 7200) - 60
+                    return self.token
                 raise Exception(f"Failed to get token: {data.get('msg')}")
-        except Exception as e:
-            raise Exception(f"Token request failed: {str(e)}")
+            except Exception as e:
+                last_err = e
+                if attempt < MAX_ATTEMPTS:
+                    time.sleep(1)
+        raise Exception(f"Token request failed: {str(last_err)}")
