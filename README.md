@@ -103,8 +103,8 @@ green-power-sentinel/
 ## 技术栈
 
 - **Python 3.10+**
-- **Pandas / NumPy / SciPy / statsmodels** — 数据处理与异常检测
-- **scikit-learn / Prophet** — 趋势建模
+- **Pandas / NumPy / SciPy** — 数据处理与异常检测
+- **scikit-learn** — 趋势建模
 - **PyYAML** — 配置外部化
 - **飞书 OpenAPI** — 多维表格 + 消息卡片（原生集成，零新增硬件）
 
