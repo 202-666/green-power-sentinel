@@ -61,7 +61,7 @@
 ```bash
 pip install -r requirements.txt
 
-# 运行 132 个单元测试
+# 运行 153 个单元测试（2026-08-05 全量复跑：153 通过/0 失败）
 python -m pytest tests/ -v
 
 # 运行 Demo 生成预警卡片与运维建议
