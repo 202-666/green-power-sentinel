@@ -63,11 +63,11 @@ class SentinelPipeline:
     def _yellow_tracker_path(self) -> str:
         """黄色升级计数器的持久化路径（L7：进程重启不清零）。
 
-        路径固定于 demo/demo_output/state/（该目录已被 .gitignore 排除，
-        不会把运行时状态混入仓库）。
+        路径固定于 ~/.aily/workspace/yellow_tracker.json
+        （跨 run 持久化必备，确保 auto 定时任务间状态不丢失）。
         """
-        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        return os.path.join(base, "demo", "demo_output", "state", "yellow_tracker.json")
+        import os.path
+        return os.path.expanduser("~/.aily/workspace/yellow_tracker.json")
 
     def _load_yellow_tracker(self) -> dict:
         """启动时从本地 JSON 加载黄色升级计数器。"""
