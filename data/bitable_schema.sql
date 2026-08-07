@@ -62,3 +62,22 @@ CREATE TABLE knowledge_base (
     last_updated DATETIME,
     reference_count FLOAT
 );
+
+-- 工单表（新增，D1 风险点：与 BitableClient.work_order_to_fields() 双向一致）
+CREATE TABLE work_orders (
+    work_order_id TEXT PRIMARY KEY,       -- 工单编号
+    alert_id TEXT,                         -- 关联预警ID
+    device_id TEXT,                        -- 设备编号
+    device_name TEXT,                      -- 设备名称
+    fault_type TEXT,                       -- 故障类型
+    fault_description TEXT,                -- 故障描述
+    recommended_repair_plan TEXT,          -- 推荐维修方案
+    required_tools TEXT,                   -- 所需工具
+    required_parts TEXT,                   -- 所需备件
+    estimated_duration_min FLOAT,          -- 预计耗时（分钟）
+    priority TEXT,                         -- 优先级（单选：高/中/低）
+    matched_case_id TEXT,                  -- 匹配案例ID
+    status TEXT,                           -- 工单状态（单选：待分配/处理中/已完成）
+    suggested_deadline DATETIME,           -- 建议截止时间
+    created_at DATETIME                    -- 创建时间
+);

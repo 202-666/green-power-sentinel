@@ -6,12 +6,12 @@ app:
 feishu:
   app_id: "${FEISHU_APP_ID:-}"
   app_secret: "${FEISHU_APP_SECRET:-}"
-  app_token: "${FEISHU_APP_TOKEN:-}"
+  app_token: "OBEZbwdgva4QnEs5IQmcSEp6n2f"
   tables:
-    runtime_data: "${FEISHU_TABLE_RUNTIME:-}"
-    alert_events: "${FEISHU_TABLE_ALERTS:-}"
-    knowledge_base: "${FEISHU_TABLE_KB:-}"
-    work_orders: "${FEISHU_TABLE_WORKORDERS:-}"
+    runtime_data: "tbl4le19Pscyvluq"
+    alert_events: "tbl10Fizkl8s4uVk"
+    knowledge_base: "tbl3BZGmyDkQWvWq"
+    work_orders: "tbl1dLifam8GQu52"
   alert_bot: "${FEISHU_ALERT_BOT:-}"
   push:
     chat_id: "${FEISHU_CHAT_ID:-}"
